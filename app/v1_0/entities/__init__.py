@@ -1,11 +1,11 @@
-from .bank_DTO import SaleInvoiceBankDTO
+from .bank_DTO import BankDTO ,SaleInvoiceBankDTO
 from .company_DTO import CompanyDTO, Regimen
-from .costumer_DTO import CustomerDTO, CustomerLiteDTO
+from .customer_DTO import CustomerDTO, CustomerLiteDTO
 from .expense_categoryDTO import ExpenseCategoryDTO
-from .expense_DTO import ExpenseDTO, ExpenseListDTO, ExpensePageDTO
+from .expense_DTO import ExpenseDTO, ExpensePageDTO
 from .investment_DTO import InvestmentDTO, InvestmentPageDTO
 from .loan_DTO import LoanDTO, LoanPageDTO
-from .product_DTO import ProductDTO, ProductPageDTO
+from .product_DTO import ProductDTO, ProductPageDTO, SaleProductsDTO
 from .profit_DTO import ProfitDTO, ProfitPageDTO
 from .profit_itemDTO import ProfitItemDTO
 from .purchase_DTO import PurchaseDTO, PurchasePageDTO
@@ -21,14 +21,14 @@ from .transaction_DTO import TransactionDTO, TransactionViewDTO, TransactionPage
 
 
 __all__ = [
-    "SaleInvoiceBankDTO",
+    "BankDTO","SaleInvoiceBankDTO",
     "CompanyDTO", "Regimen",
     "CustomerDTO", "CustomerLiteDTO",
     "ExpenseCategoryDTO",
     "ExpenseDTO", "ExpenseListDTO", "ExpensePageDTO",
     "InvestmentDTO", "InvestmentPageDTO",
     "LoanDTO", "LoanPageDTO",
-    "ProductDTO", "ProductPageDTO",
+    "ProductDTO", "ProductPageDTO", "SaleProductsDTO",
     "ProfitDTO", "ProfitPageDTO",
     "ProfitItemDTO",
     "PurchaseDTO", "PurchasePageDTO",

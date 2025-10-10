@@ -3,7 +3,7 @@ from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
-class BankTransaction(Base):
+class Transaction(Base):
     __tablename__ = "bank_transaction"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -14,4 +14,4 @@ class BankTransaction(Base):
     description: Mapped[str | None] = mapped_column(String)
     is_auto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
-    bank = relationship("Bank", backref="transactions")
+    bank = relationship("Bank")

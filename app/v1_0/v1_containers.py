@@ -1,6 +1,14 @@
 from dependency_injector import containers, providers
-
+from app.core.settings import settings
+from app.v1_0.repositories import (
+    BankRepository
+    )
+from app.v1_0.services import (
+    BankService
+)
 class APIContainer(containers.DeclarativeContainer):
-    """Base DI container for v1. Override `db_session` from main."""
-    wiring_config = containers.WiringConfiguration(packages=["app.v1_0"])
-    db_session = providers.Dependency()
+    bank_repository = providers.Singleton(BankRepository)
+    bank_service = providers.Singleton(
+        BankService, 
+        bank_repository=bank_repository
+    )

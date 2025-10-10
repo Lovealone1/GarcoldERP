@@ -2,9 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from app.v1_0.dto.customer_dto import CustomerDTO
-from app.v1_0.dto.company_dto import CompanyDTO
-from .bank_dto import SaleInvoiceBankDTO  
+from app.v1_0.entities import CustomerDTO, CompanyDTO, SaleInvoiceBankDTO
 
 
 @dataclass(slots=True)

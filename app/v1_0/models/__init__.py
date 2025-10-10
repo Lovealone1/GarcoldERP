@@ -1,6 +1,6 @@
 
+from .base import Base
 from .bank import Bank
-from .bank_transaction import BankTransaction
 from .company import Company
 from .customer import Customer
 from .expense_category import ExpenseCategory
@@ -19,11 +19,11 @@ from .sale import Sale
 from .status import Status
 from .supplier import Supplier
 from .transaction_type import TransactionType
-from .user import User
-
+from .transaction import Transaction
 __all__ = [
+    "Base",
     "Bank",
-    "BankTransaction",
+    "Transaction",
     "Company",
     "Customer",
     "ExpenseCategory",
@@ -41,6 +41,5 @@ __all__ = [
     "Sale",
     "Status",
     "Supplier",
-    "TransactionType",
-    "User",
+    "TransactionType"
 ]

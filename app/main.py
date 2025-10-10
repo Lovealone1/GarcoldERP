@@ -15,6 +15,7 @@ API_PREFIX = getattr(settings, "API_PREFIX", "/api/v1")
 async def lifespan(app: FastAPI):
     app.container.init_resources()
     logger.info(f"{settings.APP_NAME} starting in {settings.APP_ENV}")
+    
     try:
         yield
     finally:
