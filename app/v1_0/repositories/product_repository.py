@@ -1,0 +1,202 @@
+from typing import Optional, List, Dict, Any
+from datetime import date, timedelta
+
+from sqlalchemy import select, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.v1_0.models import Product, SaleItem, Sale
+from app.v1_0.schemas import ProductUpsert
+from app.v1_0.entities import SaleProductsDTO  
+from .base_repository import BaseRepository
+
+class ProductRepository(BaseRepository[Product]):
+    def __init__(self) -> None:
+        super().__init__(Product)
+
+    async def create_product(
+        self,
+        payload: ProductUpsert,
+        session: AsyncSession
+    ) -> Product:
+        entity = Product(
+            reference=payload.reference,
+            description=payload.description,
+            purchase_price=payload.purchase_price,
+            sale_price=payload.sale_price,
+            quantity=payload.quantity,
+        )
+        await self.add(entity, session)
+        return entity
+
+    async def get_product_by_id(
+        self,
+        product_id: int,
+        session: AsyncSession
+    ) -> Optional[Product]:
+        return await super().get_by_id(product_id, session)
+
+    async def update_product(
+        self,
+        product_id: int,
+        payload: ProductUpsert,
+        session: AsyncSession
+    ) -> Optional[Product]:
+        entity = await self.get_product_by_id(product_id, session)
+        if not entity:
+            return None
+
+        data = payload.model_dump(exclude_unset=True)
+        allowed = {"reference", "description", "purchase_price", "sale_price", "quantity"}
+        for k, v in data.items():
+            if k in allowed:
+                setattr(entity, k, v)
+
+        await self.update(entity, session)
+        return entity
+
+    async def delete_product(
+        self,
+        product_id: int,
+        session: AsyncSession
+    ) -> bool:
+        entity = await self.get_product_by_id(product_id, session)
+        if not entity:
+            return False
+        await self.delete(entity, session)
+        return True
+
+    async def increase_quantity(
+        self,
+        product_id: int,
+        amount: int,
+        session: AsyncSession
+    ) -> Optional[Product]:
+        entity = await self.get_product_by_id(product_id, session)
+        if not entity:
+            return None
+        entity.quantity = (entity.quantity or 0) + amount
+        await self.update(entity, session)
+        return entity
+
+    async def decrease_quantity(
+        self,
+        product_id: int,
+        amount: int,
+        session: AsyncSession
+    ) -> Optional[Product]:
+        entity = await self.get_product_by_id(product_id, session)
+        if not entity or (entity.quantity or 0) < amount:
+            return None
+        entity.quantity -= amount
+        await self.update(entity, session)
+        return entity
+
+    async def list_paginated(
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Product]:
+        stmt = (
+            select(Product)
+            .order_by(Product.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return (await session.execute(stmt)).scalars().all()
+
+    async def list_products(
+        self,
+        session: AsyncSession
+    ) -> List[Product]:
+        stmt = select(Product).order_by(Product.id.asc())
+        return (await session.execute(stmt)).scalars().all()
+
+    async def top_products_by_quantity(
+        self,
+        session: AsyncSession,
+        date_from: date,
+        date_to: date,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Top products by summed quantity in range.
+        Returns: [{ "product_id": int, "total_quantity": float }, ...]
+        """
+        if date_from > date_to:
+            date_from, date_to = date_to, date_from
+        upper_exclusive = date_to + timedelta(days=1)
+
+        stmt = (
+            select(
+                SaleItem.product_id,
+                func.coalesce(func.sum(SaleItem.quantity), 0).label("total_quantity"),
+            )
+            .join(Sale, Sale.id == SaleItem.sale_id)
+            .where(and_(Sale.sale_date >= date_from, Sale.sale_date < upper_exclusive))
+            .group_by(SaleItem.product_id)
+            .order_by(func.sum(SaleItem.quantity).desc())
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+        else:
+            stmt = stmt.limit(10)
+
+        rows = await session.execute(stmt)
+        return [
+            {"product_id": r.product_id, "total_quantity": float(r.total_quantity or 0.0)}
+            for r in rows
+        ]
+
+    async def sold_products_in_range(
+        self,
+        db: AsyncSession,
+        *,
+        date_from: date,
+        date_to: date,
+        product_ids: List[int],
+    ) -> List[SaleProductsDTO]:
+        """
+        Products filtered by IDs with total sold quantity in [date_from, date_to].
+        Returns SaleProductsDTO (reference, description, prices, sold qty).
+        """
+        if date_from > date_to:
+            date_from, date_to = date_to, date_from
+        upper_exclusive = date_to + timedelta(days=1)
+
+        stmt = (
+            select(
+                Product.id.label("id"),
+                Product.reference.label("reference"),
+                Product.description.label("description"),
+                func.coalesce(func.sum(SaleItem.quantity), 0).label("sold_quantity"),
+                Product.purchase_price.label("purchase_price"),
+                Product.sale_price.label("sale_price"),
+            )
+            .join(SaleItem, SaleItem.product_id == Product.id)
+            .join(Sale, Sale.id == SaleItem.sale_id)
+            .where(and_(Sale.sale_date >= date_from, Sale.sale_date < upper_exclusive))
+            .where(Product.id.in_(product_ids))
+            .group_by(
+                Product.id,
+                Product.reference,
+                Product.description,
+                Product.purchase_price,
+                Product.sale_price,
+            )
+            .order_by(func.sum(SaleItem.quantity).desc())
+        )
+
+        rows = (await db.execute(stmt)).mappings().all()
+
+        return [
+            SaleProductsDTO(
+                id=r["id"],
+                referencia=r["reference"],
+                descripcion=r["description"],
+                cantidad_vendida=int(r["sold_quantity"] or 0),
+                precio_compra=float(r["purchase_price"] or 0),
+                precio_venta=float(r["sale_price"] or 0),
+            )
+            for r in rows
+        ]
