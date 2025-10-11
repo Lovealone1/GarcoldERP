@@ -9,7 +9,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
                 "app.v1_0.routers.bank_router",
                 "app.v1_0.routers.supplier_router",
                 "app.v1_0.routers.customer_router", 
-                "app.v1_0.routers.product_router"
+                "app.v1_0.routers.product_router",
+                "app.v1_0.routers.loan_router"
+                
             ]
     )
 

@@ -3,19 +3,24 @@ from app.v1_0.repositories import (
     BankRepository,
     SupplierRepository, 
     CustomerRepository,
-    ProductRepository
+    ProductRepository, 
+    LoanRepository, 
+    InvestmentRepository
     )
 from app.v1_0.services import (
     BankService, 
     SupplierService, 
     CustomerService, 
-    ProductService
+    ProductService, 
+    LoanService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
     supplier_repository = providers.Singleton(SupplierRepository)
     customer_repository = providers.Singleton(CustomerRepository)
     product_repository = providers.Singleton(ProductRepository)
+    loan_repository = providers.Singleton(LoanRepository)
+    investment_repository = providers.Singleton(InvestmentRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -32,4 +37,8 @@ class APIContainer(containers.DeclarativeContainer):
     product_service = providers.Singleton(
         ProductService,
         product_repository = product_repository
+    )
+    loan_service = providers.Singleton(
+        LoanService,
+        loan_repository = loan_repository
     )
