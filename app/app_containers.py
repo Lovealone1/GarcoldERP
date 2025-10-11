@@ -6,7 +6,8 @@ from app.utils.database import async_session
 class ApplicationContainer(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
         modules=[
-                "app.v1_0.routers.bank_router"
+                "app.v1_0.routers.bank_router",
+                "app.v1_0.routers.supplier_router"
             ]
     )
 
