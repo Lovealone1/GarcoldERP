@@ -5,9 +5,8 @@ from math import ceil
 
 from app.v1_0.schemas import SupplierCreate
 from app.v1_0.repositories import SupplierRepository
-from app.core.logger import logger
 from app.v1_0.entities import SupplierDTO, SupplierPageDTO  
-
+from app.core.logger import logger
 
 class SupplierService:
     def __init__(self, supplier_repository: SupplierRepository) -> None:

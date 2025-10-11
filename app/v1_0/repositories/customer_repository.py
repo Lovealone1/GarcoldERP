@@ -55,8 +55,16 @@ class CustomerRepository(BaseRepository[Customer]):
         await self.delete(c, session)
         return True
 
-    async def list_paginated_models(self, offset: int, limit: int, session: AsyncSession) -> Tuple[List[Customer], int]:
-        stmt = select(Customer).order_by(Customer.id.asc()).offset(offset).limit(limit)
-        items = (await session.execute(stmt)).scalars().all()
-        total = await session.scalar(select(func.count(Customer.id))) or 0
-        return items, int(total)
+    async def list_paginated(
+    self, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[List[Customer], int]:
+        stmt = (
+            select(Customer)
+            .order_by(Customer.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        items: List[Customer] = list(result.scalars().all())
+        total: int = (await session.scalar(select(func.count(Customer.id)))) or 0
+        return items, total

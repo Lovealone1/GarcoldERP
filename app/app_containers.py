@@ -7,7 +7,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
         modules=[
                 "app.v1_0.routers.bank_router",
-                "app.v1_0.routers.supplier_router"
+                "app.v1_0.routers.supplier_router",
+                "app.v1_0.routers.customer_router"
             ]
     )
 
