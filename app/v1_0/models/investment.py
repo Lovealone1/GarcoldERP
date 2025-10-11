@@ -1,4 +1,3 @@
-from decimal import Decimal
 from datetime import date
 from sqlalchemy import String, Numeric, Date
 from sqlalchemy.orm import Mapped, mapped_column
@@ -9,5 +8,8 @@ class Investment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
-    maturity_date: Mapped[date | None] = mapped_column(Date)
+    balance: Mapped[float] = mapped_column(
+        Numeric(14, 2, asdecimal=False),
+        nullable=False,
+    )
+    maturity_date: Mapped[date] = mapped_column(Date)

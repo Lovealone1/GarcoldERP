@@ -12,7 +12,8 @@ from app.v1_0.services import (
     SupplierService, 
     CustomerService, 
     ProductService, 
-    LoanService
+    LoanService, 
+    InvestmentService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
@@ -41,4 +42,8 @@ class APIContainer(containers.DeclarativeContainer):
     loan_service = providers.Singleton(
         LoanService,
         loan_repository = loan_repository
+    )
+    investment_service = providers.Singleton(
+        InvestmentService, 
+        investment_repository = investment_repository
     )

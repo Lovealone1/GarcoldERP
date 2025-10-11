@@ -8,11 +8,10 @@ from app.v1_0.repositories import LoanRepository
 from app.v1_0.schemas import LoanCreate
 from app.v1_0.entities import LoanDTO, LoanPageDTO
 
-
 class LoanService:
-    def __init__(self, loan_repository: LoanRepository, page_size: int = 10) -> None:
+    def __init__(self, loan_repository: LoanRepository) -> None:
         self.loan_repository = loan_repository
-        self.PAGE_SIZE = page_size
+        self.PAGE_SIZE = 10
 
     async def _require(self, loan_id: int, db: AsyncSession):
         loan = await self.loan_repository.get_by_id(loan_id, db)
