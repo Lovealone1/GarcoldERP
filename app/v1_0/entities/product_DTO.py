@@ -22,7 +22,7 @@ class SaleProductsDTO:
     No incluye estado ni fecha de creación.
     """
     id: int
-    referencia: str
+    reference: str
     description: str
     sold_quanity: int
     purchase_price: float

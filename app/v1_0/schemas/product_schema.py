@@ -26,7 +26,7 @@ class ProductRangeQuery(BaseModel):
     """Filter products by inclusive date range and product IDs."""
     date_from: date = Field(..., description="Inclusive start date")
     date_to: date = Field(..., description="Inclusive end date")
-    product_ids: List[int] = Field(..., min_items=1, description="Product IDs to query")
+    product_ids: List[int] = Field(...,description="Product IDs to query")
 
     model_config = {
         "json_schema_extra": {

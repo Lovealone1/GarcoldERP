@@ -8,7 +8,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         modules=[
                 "app.v1_0.routers.bank_router",
                 "app.v1_0.routers.supplier_router",
-                "app.v1_0.routers.customer_router"
+                "app.v1_0.routers.customer_router", 
+                "app.v1_0.routers.product_router"
             ]
     )
 

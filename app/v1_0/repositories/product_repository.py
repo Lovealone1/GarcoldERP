@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta
 
 from sqlalchemy import select, func, and_
@@ -92,25 +92,23 @@ class ProductRepository(BaseRepository[Product]):
         return entity
 
     async def list_paginated(
-        self,
-        offset: int,
-        limit: int,
-        session: AsyncSession
-    ) -> List[Product]:
+    self, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[List[Product], int]:
         stmt = (
             select(Product)
             .order_by(Product.id.asc())
             .offset(offset)
             .limit(limit)
         )
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Product] = list(result.scalars().all())
+        total: int = (await session.scalar(select(func.count(Product.id)))) or 0
+        return items, total
 
-    async def list_products(
-        self,
-        session: AsyncSession
-    ) -> List[Product]:
+    async def list_products(self, session: AsyncSession) -> List[Product]:
         stmt = select(Product).order_by(Product.id.asc())
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     async def top_products_by_quantity(
         self,
@@ -133,7 +131,7 @@ class ProductRepository(BaseRepository[Product]):
                 func.coalesce(func.sum(SaleItem.quantity), 0).label("total_quantity"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .where(and_(Sale.sale_date >= date_from, Sale.sale_date < upper_exclusive))
+            .where(and_(Sale.created_at >= date_from, Sale.created_at < upper_exclusive))
             .group_by(SaleItem.product_id)
             .order_by(func.sum(SaleItem.quantity).desc())
         )
@@ -175,7 +173,7 @@ class ProductRepository(BaseRepository[Product]):
             )
             .join(SaleItem, SaleItem.product_id == Product.id)
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .where(and_(Sale.sale_date >= date_from, Sale.sale_date < upper_exclusive))
+            .where(and_(Sale.created_at >= date_from, Sale.created_at < upper_exclusive))
             .where(Product.id.in_(product_ids))
             .group_by(
                 Product.id,
@@ -192,11 +190,11 @@ class ProductRepository(BaseRepository[Product]):
         return [
             SaleProductsDTO(
                 id=r["id"],
-                referencia=r["reference"],
-                descripcion=r["description"],
-                cantidad_vendida=int(r["sold_quantity"] or 0),
-                precio_compra=float(r["purchase_price"] or 0),
-                precio_venta=float(r["sale_price"] or 0),
+                reference=r["reference"],
+                description=r["description"],
+                sold_quanity=int(r["sold_quantity"] or 0),
+                purchase_price=float(r["purchase_price"] or 0),
+                sale_price=float(r["sale_price"] or 0),
             )
             for r in rows
         ]
