@@ -4,11 +4,13 @@ from .customer_service import CustomerService
 from .product_service import ProductService
 from .loan_service import LoanService
 from .investment_service import InvestmentService
+from .status_service import StatusService
 __all__=[
     "BankService",
     "SupplierService",
     "CustomerService",
     "ProductService",
     "LoanService",
-    "InvestmentService"
+    "InvestmentService",
+    "StatusService"
     ]
