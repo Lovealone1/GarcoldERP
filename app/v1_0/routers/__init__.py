@@ -6,7 +6,7 @@ from .loan_router import router as loan_router
 from .investment_router import router as investment_router
 from .status_router import router as status_router
 from .transaction_router import router as transaction_router
-
+from .expense_router import router as expense_router
 defined_routers = [
     bank_router,
     supplier_router,
@@ -15,5 +15,6 @@ defined_routers = [
     loan_router,
     investment_router,
     status_router,
-    transaction_router
+    transaction_router,
+    expense_router
     ]

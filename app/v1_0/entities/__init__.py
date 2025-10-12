@@ -2,7 +2,7 @@ from .bank_DTO import BankDTO ,SaleInvoiceBankDTO
 from .company_DTO import CompanyDTO, Regimen
 from .customer_DTO import CustomerDTO, CustomerLiteDTO, CustomerPageDTO
 from .expense_categoryDTO import ExpenseCategoryDTO
-from .expense_DTO import ExpenseDTO, ExpensePageDTO
+from .expense_DTO import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
 from .investment_DTO import InvestmentDTO, InvestmentPageDTO
 from .loan_DTO import LoanDTO, LoanPageDTO
 from .product_DTO import ProductDTO, ProductPageDTO, SaleProductsDTO
@@ -25,7 +25,7 @@ __all__ = [
     "CompanyDTO", "Regimen",
     "CustomerDTO", "CustomerLiteDTO","CustomerPageDTO",
     "ExpenseCategoryDTO",
-    "ExpenseDTO", "ExpenseListDTO", "ExpensePageDTO",
+    "ExpenseDTO", "ExpenseViewDTO", "ExpensePageDTO",
     "InvestmentDTO", "InvestmentPageDTO",
     "LoanDTO", "LoanPageDTO",
     "ProductDTO", "ProductPageDTO", "SaleProductsDTO",

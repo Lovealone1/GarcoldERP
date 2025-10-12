@@ -58,3 +58,9 @@ class TransactionTypeRepository(BaseRepository[TransactionType]):
         stmt = select(TransactionType).order_by(TransactionType.name.asc())
         rows = await session.execute(stmt)
         return list(rows.scalars().all())
+    
+    async def get_id_by_name(self, name: str, session: AsyncSession) -> Optional[int]:
+        stmt = select(TransactionType.id).where(
+            func.lower(TransactionType.name) == func.lower(func.trim(name))
+        )
+        return (await session.execute(stmt)).scalar_one_or_none()

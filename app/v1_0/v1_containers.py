@@ -8,7 +8,9 @@ from app.v1_0.repositories import (
     InvestmentRepository, 
     StatusRepository, 
     TransactionRepository, 
-    TransactionTypeRepository
+    TransactionTypeRepository, 
+    ExpenseRepository, 
+    ExpenseCategoryRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -18,7 +20,8 @@ from app.v1_0.services import (
     LoanService, 
     InvestmentService, 
     StatusService, 
-    TransactionService
+    TransactionService, 
+    ExpenseService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
@@ -30,6 +33,8 @@ class APIContainer(containers.DeclarativeContainer):
     status_repository = providers.Singleton(StatusRepository)
     transaction_repository = providers.Singleton(TransactionRepository)
     transaction_type_repository = providers.Singleton(TransactionTypeRepository)
+    expense_repository = providers.Singleton(ExpenseRepository)
+    expense_category_repository = providers.Singleton(ExpenseCategoryRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -64,4 +69,11 @@ class APIContainer(containers.DeclarativeContainer):
         transaction_repository = transaction_repository, 
         transaction_type_repository = transaction_type_repository,
         bank_repository = bank_repository
+    )
+    expense_service = providers.Singleton(
+        ExpenseService,
+        expense_repository = expense_repository, 
+        bank_repository = bank_repository, 
+        expense_category_repository = expense_category_repository,
+        transaction_service = transaction_service
     )
