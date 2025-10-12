@@ -56,4 +56,5 @@ class TransactionTypeRepository(BaseRepository[TransactionType]):
         Retrieve all transaction types, ordered alphabetically by name.
         """
         stmt = select(TransactionType).order_by(TransactionType.name.asc())
-        return (await session.execute(stmt)).scalars().all()
+        rows = await session.execute(stmt)
+        return list(rows.scalars().all())

@@ -2,7 +2,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import ExpenseCategory
-from app.v1_0.entities import ExpenseCategoryDTO
+from app.v1_0.schemas import ExpenseCategoryCreate
 from .base_repository import BaseRepository
 
 class ExpenseCategoryRepository(BaseRepository[ExpenseCategory]):
@@ -11,14 +11,14 @@ class ExpenseCategoryRepository(BaseRepository[ExpenseCategory]):
 
     async def create_category(
         self,
-        dto: ExpenseCategoryDTO,
+        schema: ExpenseCategoryCreate,
         session: AsyncSession
     ) -> ExpenseCategory:
         """
         Create a new category from DTO.
         Ignores dto.id if DB auto-generates PK.
         """
-        category = ExpenseCategory(nombre=dto.name)
+        category = ExpenseCategory(nombre=schema.name)
         await self.add(category, session)
         return category
 
@@ -33,7 +33,7 @@ class ExpenseCategoryRepository(BaseRepository[ExpenseCategory]):
         self,
         session: AsyncSession
     ) -> List[ExpenseCategory]:
-        return await super().get_all(session=session)
+        return await super().list_all(session=session)
 
     async def delete_category(
         self,

@@ -1,6 +1,6 @@
-# app/v1_0/repositories/bank_repository.py
 from datetime import datetime, timezone
 from typing import Optional, List
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Bank
@@ -14,7 +14,6 @@ class BankRepository(BaseRepository[Bank]):
     def __init__(self) -> None:
         super().__init__(Bank)
 
-    # Create
     async def create_bank(self, dto: BankCreate, session: AsyncSession) -> Bank:
         bank = Bank(**dto.model_dump())
         await self.add(bank, session)  # flush/refresh inside BaseRepository.add()
@@ -56,11 +55,18 @@ class BankRepository(BaseRepository[Bank]):
         bank.updated_at = datetime.now(timezone.utc)
         await self.update(bank, session)
         return bank
-
-    # Delete
+    
     async def delete_bank(self, bank_id: int, session: AsyncSession) -> bool:
         bank = await self.get_by_id(bank_id, session)
         if not bank:
             return False
         await self.delete(bank, session)
         return True
+
+    async def list_banks(
+        self,
+        session: AsyncSession
+    ) -> List[Bank]:
+
+        result = await session.execute(select(Bank))
+        return list(result.scalars().all())

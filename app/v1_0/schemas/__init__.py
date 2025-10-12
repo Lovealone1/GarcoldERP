@@ -22,6 +22,7 @@ from .purchase_payment_schema import PurchasePaymentCreate
 from .sale_payment_schema import SalePaymentCreate
 from .transaction_schema import TransactionCreate
 from .profit_schema import ProfitCreate
+from .expense_category_schema import ExpenseCategoryCreate
 __all__ = [
     "BankCreate", "BankUpdateBalance",
     "CustomerCreate", "CustomerUpdate",
@@ -36,5 +37,6 @@ __all__ = [
     "PurchasePaymentCreate",
     "SalePaymentCreate",
     "TransactionCreate",
-    "ProfitCreate"
+    "ProfitCreate",
+    "ExpenseCategoryCreate"
 ]

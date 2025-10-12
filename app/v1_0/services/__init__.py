@@ -5,6 +5,7 @@ from .product_service import ProductService
 from .loan_service import LoanService
 from .investment_service import InvestmentService
 from .status_service import StatusService
+from .expense_category_service import ExpenseCategoryService
 __all__=[
     "BankService",
     "SupplierService",
@@ -12,5 +13,6 @@ __all__=[
     "ProductService",
     "LoanService",
     "InvestmentService",
-    "StatusService"
+    "StatusService",
+    "ExpenseCategoryService"
     ]

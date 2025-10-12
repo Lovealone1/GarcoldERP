@@ -103,7 +103,7 @@ class ProductRepository(BaseRepository[Product]):
         result = await session.execute(stmt)
         items: List[Product] = list(result.scalars().all())
         total: int = (await session.scalar(select(func.count(Product.id)))) or 0
-        return items, total
+        return items, int(total or 0)
 
     async def list_products(self, session: AsyncSession) -> List[Product]:
         stmt = select(Product).order_by(Product.id.asc())
