@@ -11,6 +11,7 @@ class TransactionDTO:
     type_id: int
     description: Optional[str]
     created_at: datetime
+    is_auto: bool
 
 @dataclass(slots=True)
 class TransactionViewDTO:

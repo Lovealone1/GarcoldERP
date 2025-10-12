@@ -12,8 +12,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
                 "app.v1_0.routers.product_router",
                 "app.v1_0.routers.loan_router",
                 "app.v1_0.routers.investment_router",
-                "app.v1_0.routers.status_router"
-                
+                "app.v1_0.routers.status_router",
+                "app.v1_0.routers.transaction_router"
             ]
     )
 
