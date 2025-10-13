@@ -55,16 +55,16 @@ class ExpenseService:
                 exp = await self.expense_repo.create_expense(payload, session=db)
 
                 desc = f"Gasto {cat.name} {exp.id}"
-                await self.tx_service.create(
-                    TransactionCreate(
-                        bank_id=payload.bank_id,
-                        amount=payload.amount,
-                        type_id=expense_type_id,
-                        description=desc,
-                        is_auto=True,
-                    ),
-                    db=db,
-                )
+                await self.tx_service.insert_transaction(
+                TransactionCreate(
+                    bank_id=payload.bank_id,
+                    amount=payload.amount,
+                    type_id=expense_type_id,
+                    description=desc,
+                    is_auto=True,
+                ),
+                db=db,
+            )
 
             logger.info(f"[ExpenseService] Expense created ID={exp.id}")
             return ExpenseDTO(
