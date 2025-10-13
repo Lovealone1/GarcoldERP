@@ -10,7 +10,12 @@ from app.v1_0.repositories import (
     TransactionRepository, 
     TransactionTypeRepository, 
     ExpenseRepository, 
-    ExpenseCategoryRepository
+    ExpenseCategoryRepository, 
+    SaleRepository, 
+    SaleItemRepository, 
+    ProfitRepository,
+    ProfitItemRepository, 
+    SalePaymentRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -21,7 +26,8 @@ from app.v1_0.services import (
     InvestmentService, 
     StatusService, 
     TransactionService, 
-    ExpenseService
+    ExpenseService, 
+    SaleService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
@@ -35,6 +41,11 @@ class APIContainer(containers.DeclarativeContainer):
     transaction_type_repository = providers.Singleton(TransactionTypeRepository)
     expense_repository = providers.Singleton(ExpenseRepository)
     expense_category_repository = providers.Singleton(ExpenseCategoryRepository)
+    sale_repository = providers.Singleton(SaleRepository)
+    sale_item_repository = providers.Singleton(SaleItemRepository)
+    profit_repository = providers.Singleton(ProfitRepository)
+    profit_item_repository = providers.Singleton(ProfitItemRepository)
+    sale_payment_repository = providers.Singleton(SalePaymentRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -75,5 +86,18 @@ class APIContainer(containers.DeclarativeContainer):
         expense_repository = expense_repository, 
         bank_repository = bank_repository, 
         expense_category_repository = expense_category_repository,
+        transaction_service = transaction_service
+    )
+    sale_service = providers.Singleton(
+        SaleService,
+        sale_repository = sale_repository,
+        sale_item_repository = sale_item_repository,
+        product_repository = product_repository,
+        customer_repository = customer_repository, 
+        status_repository = status_repository, 
+        profit_repository = profit_repository,
+        profit_item_repository = profit_item_repository,
+        bank_repository = bank_repository, 
+        sale_payment_repository = sale_payment_repository,
         transaction_service = transaction_service
     )

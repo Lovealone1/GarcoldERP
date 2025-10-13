@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 from datetime import datetime
 from .page import PageDTO
 
@@ -10,6 +11,6 @@ class SaleDTO:
     status: str
     total: float
     remaining_balance: float
-    date: datetime
+    created_at: datetime
 
 SalePageDTO = PageDTO[SaleDTO]

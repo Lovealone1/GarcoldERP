@@ -23,6 +23,7 @@ from .sale_payment_schema import SalePaymentCreate
 from .transaction_schema import TransactionCreate
 from .profit_schema import ProfitCreate
 from .expense_category_schema import ExpenseCategoryCreate
+from .profit_item_schema import SaleProfitDetailCreate
 __all__ = [
     "BankCreate", "BankUpdateBalance",
     "CustomerCreate", "CustomerUpdate",
@@ -34,6 +35,7 @@ __all__ = [
     "ProductUpsert", "ProductRangeQuery",
     "PurchaseItemInput", "PurchaseCreate", "PurchaseItemCreate","PurchaseInsert",
     "SaleItemInput", "SaleCreate", "SaleItemCreate","SaleInsert",
+    "SaleProfitDetailCreate",
     "PurchasePaymentCreate",
     "SalePaymentCreate",
     "TransactionCreate",
