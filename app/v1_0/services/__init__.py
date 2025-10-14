@@ -10,6 +10,7 @@ from .transaction_service import TransactionService
 from .expense_service import ExpenseService
 from .sale_service import SaleService
 from .sale_payment_service import SalePaymentService
+from .purchase_service import PurchaseService
 __all__=[
     "BankService",
     "SupplierService",
@@ -22,5 +23,6 @@ __all__=[
     "TransactionService",
     "ExpenseService",
     "SaleService",
-    "SalePaymentService"
+    "SalePaymentService",
+    "PurchaseService"
     ]

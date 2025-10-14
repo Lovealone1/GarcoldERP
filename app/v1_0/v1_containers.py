@@ -15,7 +15,10 @@ from app.v1_0.repositories import (
     SaleItemRepository, 
     ProfitRepository,
     ProfitItemRepository, 
-    SalePaymentRepository
+    SalePaymentRepository, 
+    PurchaseRepository,
+    PurchaseItemRepository, 
+    PurchasePaymentRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -28,7 +31,8 @@ from app.v1_0.services import (
     TransactionService, 
     ExpenseService, 
     SaleService,
-    SalePaymentService
+    SalePaymentService, 
+    PurchaseService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
@@ -47,6 +51,9 @@ class APIContainer(containers.DeclarativeContainer):
     profit_repository = providers.Singleton(ProfitRepository)
     profit_item_repository = providers.Singleton(ProfitItemRepository)
     sale_payment_repository = providers.Singleton(SalePaymentRepository)
+    purchase_repository = providers.Singleton(PurchaseRepository)
+    purchase_item_repository = providers.Singleton(PurchaseItemRepository)
+    purchase_payment_repository = providers.Singleton(PurchasePaymentRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -109,5 +116,16 @@ class APIContainer(containers.DeclarativeContainer):
         sale_payment_repository = sale_payment_repository,
         bank_repository = bank_repository,
         customer_repository = customer_repository,
+        transaction_service = transaction_service
+    )
+    purchase_service = providers.Singleton(
+        PurchaseService,
+        purchase_repository = purchase_repository,
+        purchase_item_repository = purchase_item_repository, 
+        product_repository = product_repository, 
+        supplier_repository = supplier_repository, 
+        status_repository = status_repository, 
+        bank_repository = bank_repository, 
+        purchase_payment_repository = purchase_payment_repository, 
         transaction_service = transaction_service
     )

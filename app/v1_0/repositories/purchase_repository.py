@@ -83,7 +83,8 @@ class PurchaseRepository(BaseRepository[Purchase]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Purchase]= list(result.scalars().all())
         total = await session.scalar(select(func.count(Purchase.id)))
         return items, int(total or 0)
 
