@@ -55,7 +55,8 @@ class ProfitRepository(BaseRepository[Profit]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Profit ]= list(result.scalars().all())
         total = await session.scalar(select(func.count(Profit.id)))
         return items, int(total or 0)
 
@@ -85,7 +86,7 @@ class ProfitRepository(BaseRepository[Profit]):
         stmt = (
             select(
                 day_col.label("date"),
-                func.coalesce(func.sum(Profit.profit), 0).label("profit"),
+                func.coalesce(func.sum(Profit.profit_val), 0).label("profit"),
             )
             .where(day_col >= date_from)
             .where(day_col <= date_to)
