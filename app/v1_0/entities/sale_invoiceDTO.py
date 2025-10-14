@@ -22,7 +22,7 @@ class SaleInvoiceDTO:
     status: str
     total: float
     remaining_balance: float
-    bank: Optional[SaleInvoiceBankDTO]  
+    account_number: Optional[SaleInvoiceBankDTO]  
     customer: CustomerDTO
     company: CompanyDTO
     items: List[SaleItemViewDescDTO]

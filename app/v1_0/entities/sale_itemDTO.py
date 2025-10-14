@@ -12,6 +12,7 @@ class SaleItemDTO:
 class SaleItemViewDTO:
     sale_id: int
     product_reference: str
+    product_description: str
     quantity: int
     unit_price: float
     total: float

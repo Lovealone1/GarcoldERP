@@ -12,6 +12,7 @@ from .sale_payment_router import router as sale_payment_router
 from .purchase_router import router as purchase_router
 from .purchase_payment_router import router as purchase_payment_router
 from .profit_router import router as profit_router
+from .invoice_router import router as invoice_router
 defined_routers = [
     bank_router,
     supplier_router,
@@ -26,5 +27,6 @@ defined_routers = [
     sale_payment_router,
     purchase_router,
     purchase_payment_router,
-    profit_router
+    profit_router,
+    invoice_router
     ]
