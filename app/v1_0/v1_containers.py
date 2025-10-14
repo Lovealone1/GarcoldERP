@@ -32,7 +32,8 @@ from app.v1_0.services import (
     ExpenseService, 
     SaleService,
     SalePaymentService, 
-    PurchaseService
+    PurchaseService, 
+    PurchasePaymentService
 )
 class APIContainer(containers.DeclarativeContainer):
     bank_repository = providers.Singleton(BankRepository)
@@ -127,5 +128,13 @@ class APIContainer(containers.DeclarativeContainer):
         status_repository = status_repository, 
         bank_repository = bank_repository, 
         purchase_payment_repository = purchase_payment_repository, 
+        transaction_service = transaction_service
+    )
+    purchase_payment_service = providers.Singleton(
+        PurchasePaymentService,
+        purchase_repository = purchase_repository, 
+        status_repository = status_repository, 
+        purchase_payment_repository = purchase_payment_repository, 
+        bank_repository = bank_repository,
         transaction_service = transaction_service
     )

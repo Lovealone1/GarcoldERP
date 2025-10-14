@@ -28,7 +28,8 @@ class PurchasePaymentRepository(BaseRepository[PurchasePayment]):
         Return all payments for a given purchase.
         """
         stmt = select(PurchasePayment).where(PurchasePayment.purchase_id == purchase_id)
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     async def delete_payment(
         self,
