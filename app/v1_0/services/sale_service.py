@@ -31,7 +31,6 @@ from app.v1_0.schemas import (
     SaleProfitDetailCreate,
 )
 
-
 class SaleService:
     def __init__(
         self,

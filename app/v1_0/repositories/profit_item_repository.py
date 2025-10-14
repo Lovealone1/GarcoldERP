@@ -57,6 +57,7 @@ class ProfitItemRepository(BaseRepository[ProfitItem]):
                 sale_id=p.sale_id,
                 product_id=p.product_id,
                 quantity=p.quantity,
+                
                 purchase_price=p.purchase_price,
                 sale_price=p.sale_price,
             )

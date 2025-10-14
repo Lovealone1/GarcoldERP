@@ -48,6 +48,36 @@ class CustomerRepository(BaseRepository[Customer]):
         await self.update(c, session)
         return c
 
+    async def decrease_balance(self, customer_id: int, amount: float, session: AsyncSession) -> Optional[Customer]:
+        """
+        Decrease customer's balance by `amount` (floored at 0).
+        """
+        c = await self.get_customer_by_id(customer_id, session)
+        if not c:
+            return None
+        current = float(c.balance or 0.0)
+        c.balance = max(current - float(amount or 0.0), 0.0)
+        await self.update(c, session)
+        return c
+
+    async def increase_balance(
+    self,
+    customer_id: int,
+    amount: float,
+    session: AsyncSession,
+    ) -> Optional[Customer]:
+        """
+        Increase customer's balance by `amount` (treats None as 0).
+        """
+        c = await self.get_customer_by_id(customer_id, session)
+        if not c:
+            return None
+        inc = max(float(amount or 0.0), 0.0)
+        current = float(c.balance or 0.0)
+        c.balance = current + inc
+        await self.update(c, session)
+        return c
+
     async def delete_customer(self, customer_id: int, session: AsyncSession) -> bool:
         c = await self.get_customer_by_id(customer_id, session)
         if not c:

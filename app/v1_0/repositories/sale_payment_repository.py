@@ -32,11 +32,9 @@ class SalePaymentRepository(BaseRepository[SalePayment]):
         sale_id: int,
         session: AsyncSession
     ) -> List[SalePayment]:
-        """
-        Return all payments for the given sale.
-        """
         stmt = select(SalePayment).where(SalePayment.sale_id == sale_id)
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     async def delete_payment(
         self,

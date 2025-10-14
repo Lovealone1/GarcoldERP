@@ -9,6 +9,7 @@ from .expense_category_service import ExpenseCategoryService
 from .transaction_service import TransactionService
 from .expense_service import ExpenseService
 from .sale_service import SaleService
+from .sale_payment_service import SalePaymentService
 __all__=[
     "BankService",
     "SupplierService",
@@ -20,5 +21,6 @@ __all__=[
     "ExpenseCategoryService",
     "TransactionService",
     "ExpenseService",
-    "SaleService"
+    "SaleService",
+    "SalePaymentService"
     ]
