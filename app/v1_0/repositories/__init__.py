@@ -19,7 +19,7 @@ from .status_repository import StatusRepository
 from .supplier_repository import SupplierRepository
 from .transaction_repository import TransactionRepository
 from .transaction_type_repository import TransactionTypeRepository
-
+from .media_repository import MediaRepository
 __all__ = [
     "BaseRepository",
     "BankRepository",
@@ -42,4 +42,5 @@ __all__ = [
     "SupplierRepository",
     "TransactionRepository",
     "TransactionTypeRepository",
+    "MediaRepository"
 ]

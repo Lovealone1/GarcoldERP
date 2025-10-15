@@ -20,6 +20,8 @@ from .status import Status
 from .supplier import Supplier
 from .transaction_type import TransactionType
 from .transaction import Transaction
+from .users import User
+from .media import Media
 __all__ = [
     "Base",
     "Bank",
@@ -41,5 +43,7 @@ __all__ = [
     "Sale",
     "Status",
     "Supplier",
-    "TransactionType"
+    "TransactionType",
+    "User",
+    "Media"
 ]

@@ -15,6 +15,7 @@ from .purchase_payment_service import PurchasePaymentService
 from .profit_service import ProfitService
 from .invoice_service import InvoiceService
 from .dashboard_service import DashboardService
+from .media_service import MediaService
 __all__=[
     "BankService",
     "SupplierService",
@@ -31,5 +32,7 @@ __all__=[
     "PurchaseService",
     "PurchasePaymentService",
     "ProfitService",
-    "InvoiceService"
+    "InvoiceService",
+    "DashboardService",
+    "MediaService"
     ]

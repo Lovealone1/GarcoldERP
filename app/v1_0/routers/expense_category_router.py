@@ -1,9 +1,9 @@
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, Body, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
-from app.utils.database.db_connector import get_db
+from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 

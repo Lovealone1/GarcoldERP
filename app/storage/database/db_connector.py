@@ -7,7 +7,7 @@ from app.core.settings import settings
 
 # Ej: settings.DATABASE_URL = "postgresql://user:pass@ep-...-pooler.neon.tech/db?sslmode=require&channel_binding=require"
 
-raw = settings.DATABASE_URL
+raw: str = settings.DATABASE_URL.get_secret_value()
 
 # 1) Parseo base
 u = make_url(raw)
