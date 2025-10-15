@@ -86,7 +86,7 @@ class ProfitRepository(BaseRepository[Profit]):
         stmt = (
             select(
                 day_col.label("date"),
-                func.coalesce(func.sum(Profit.profit_val), 0).label("profit"),
+                func.coalesce(func.sum(Profit.profit), 0).label("profit"),
             )
             .where(day_col >= date_from)
             .where(day_col <= date_to)

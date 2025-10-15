@@ -14,6 +14,7 @@ from .purchase_service import PurchaseService
 from .purchase_payment_service import PurchasePaymentService
 from .profit_service import ProfitService
 from .invoice_service import InvoiceService
+from .dashboard_service import DashboardService
 __all__=[
     "BankService",
     "SupplierService",

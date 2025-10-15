@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +35,7 @@ class SaleRepository(BaseRepository[Sale]):
         self,
         session: AsyncSession
     ) -> List[Sale]:
-        return await super().get_all(session)
+        return await super().list_all(session)
 
     async def update_sale(
         self,
@@ -80,7 +80,8 @@ class SaleRepository(BaseRepository[Sale]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Sale] = list(result.scalars().all())
         total = await session.scalar(select(func.count(Sale.id)))
         return items, int(total or 0)
 
@@ -153,3 +154,9 @@ class SaleRepository(BaseRepository[Sale]):
             }
             for r in rows
         ]
+    
+    async def min_date(self, session: AsyncSession) -> Optional[date]:
+        stmt = select(func.min(Sale.created_at))
+        res = await session.execute(stmt)
+        v = res.scalar_one_or_none()
+        return v.date() if isinstance(v, datetime) else v

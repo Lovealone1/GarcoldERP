@@ -374,10 +374,12 @@ class SaleService:
             for d in details:
                 prod = await self.product_repository.get_by_id(d.product_id, session=db)
                 reference = getattr(prod, "reference", "Desconocido") if prod else "Desconocido"
+                description = getattr(prod, "description", "Desconocido") if prod else "Desconocido"
                 out.append(
                     SaleItemViewDTO(
                         sale_id=sale_id,
                         product_reference=reference,
+                        product_description=description,
                         quantity=d.quantity,
                         unit_price=d.unit_price,
                         total=d.total,

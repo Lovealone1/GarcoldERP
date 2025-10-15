@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime 
 
 from sqlalchemy import select, func, Date, cast
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +66,6 @@ class PurchaseRepository(BaseRepository[Purchase]):
         await self.delete(purchase, session)
         return True
 
-
     async def list_paginated(
         self,
         offset: int,
@@ -87,7 +86,6 @@ class PurchaseRepository(BaseRepository[Purchase]):
         items: List[Purchase]= list(result.scalars().all())
         total = await session.scalar(select(func.count(Purchase.id)))
         return items, int(total or 0)
-
 
     async def purchases_by_day(
         self,
@@ -161,3 +159,11 @@ class PurchaseRepository(BaseRepository[Purchase]):
             }
             for r in rows
         ]
+        
+    async def min_date(self, session: AsyncSession) -> Optional[date]:
+        stmt = select(func.min(Purchase.purchase_date))
+        res = await session.execute(stmt)
+        v = res.scalar_one_or_none()
+        if isinstance(v, datetime):
+            return v.date()
+        return v
