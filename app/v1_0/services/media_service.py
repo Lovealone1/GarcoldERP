@@ -9,7 +9,7 @@ from app.storage.cloud_storage.service import CloudStorageService
 class MediaService:
     def __init__(self, media_repository: MediaRepository, storage: CloudStorageService) -> None:
         self.repo = media_repository
-        self.storage = storage  # CloudStorageService debe exponer delete(key: str)
+        self.storage = storage  
 
     async def confirm_user_avatar(
         self,
