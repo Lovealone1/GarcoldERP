@@ -42,8 +42,10 @@ from app.v1_0.services import (
     MediaService
     )
 from app.storage.cloud_storage import CloudStorageService
-class APIContainer(containers.DeclarativeContainer):
+from app.utils.pdf_renderer import PdfRenderer
 
+class APIContainer(containers.DeclarativeContainer):
+    pdf_renderer = providers.Singleton(PdfRenderer)
     bank_repository = providers.Singleton(BankRepository)
     supplier_repository = providers.Singleton(SupplierRepository)
     customer_repository = providers.Singleton(CustomerRepository)
