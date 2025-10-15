@@ -24,6 +24,15 @@ from .transaction_schema import TransactionCreate
 from .profit_schema import ProfitCreate
 from .expense_category_schema import ExpenseCategoryCreate
 from .profit_item_schema import SaleProfitDetailCreate
+from .media_schema import (
+    MediaConfirmInDTO, 
+    MediaOutDTO, 
+    MediaKindDTO, 
+    PresignRequestDTO, 
+    PresignResponseDTO,
+    ContentTypeImage
+    )
+
 __all__ = [
     "BankCreate", "BankUpdateBalance",
     "CustomerCreate", "CustomerUpdate",
@@ -40,5 +49,11 @@ __all__ = [
     "SalePaymentCreate",
     "TransactionCreate",
     "ProfitCreate",
-    "ExpenseCategoryCreate"
+    "ExpenseCategoryCreate",
+    "ContentTypeImage",
+    "MediaKindDTO",
+    "PresignRequestDTO",
+    "PresignResponseDTO",
+    "MediaConfirmInDTO",
+    "MediaOutDTO"
 ]

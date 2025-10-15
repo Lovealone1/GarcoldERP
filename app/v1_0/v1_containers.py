@@ -19,7 +19,8 @@ from app.v1_0.repositories import (
     PurchaseRepository,
     PurchaseItemRepository, 
     PurchasePaymentRepository, 
-    CompanyRepository
+    CompanyRepository, 
+    MediaRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -37,9 +38,12 @@ from app.v1_0.services import (
     PurchasePaymentService,
     ProfitService,
     InvoiceService, 
-    DashboardService
+    DashboardService, 
+    MediaService
     )
+from app.storage.cloud_storage import CloudStorageService
 class APIContainer(containers.DeclarativeContainer):
+
     bank_repository = providers.Singleton(BankRepository)
     supplier_repository = providers.Singleton(SupplierRepository)
     customer_repository = providers.Singleton(CustomerRepository)
@@ -60,6 +64,7 @@ class APIContainer(containers.DeclarativeContainer):
     purchase_item_repository = providers.Singleton(PurchaseItemRepository)
     purchase_payment_repository = providers.Singleton(PurchasePaymentRepository)
     company_repository = providers.Singleton(CompanyRepository)
+    media_repository = providers.Singleton(MediaRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -172,4 +177,10 @@ class APIContainer(containers.DeclarativeContainer):
         product_repository = product_repository, 
         loan_repository = loan_repository, 
         investment_repository = investment_repository
+    )
+    cloud_storage_service = providers.Singleton(CloudStorageService)
+    media_service = providers.Factory(
+        MediaService,
+        media_repository=media_repository,
+        storage=cloud_storage_service,
     )

@@ -1,26 +1,9 @@
 from typing import Optional
-from datetime import date
-from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from dependency_injector.wiring import inject, Provide
-
-from app.utils.database.db_connector import get_db
-from app.app_containers import ApplicationContainer
-from app.core.logger import logger
-
-from app.v1_0.entities import FinalReportDTO, Bucket as BucketDTO
-from app.v1_0.services import DashboardService
-
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
-
-# app/v1_0/routers/dashboard_router.py
-
-from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
-from app.utils.database.db_connector import get_db
+from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
