@@ -55,7 +55,8 @@ class ProfitRepository(BaseRepository[Profit]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Profit ]= list(result.scalars().all())
         total = await session.scalar(select(func.count(Profit.id)))
         return items, int(total or 0)
 

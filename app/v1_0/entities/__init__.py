@@ -1,11 +1,11 @@
-from .bank_DTO import SaleInvoiceBankDTO
+from .bank_DTO import BankDTO ,SaleInvoiceBankDTO
 from .company_DTO import CompanyDTO, Regimen
-from .costumer_DTO import CustomerDTO, CustomerLiteDTO
+from .customer_DTO import CustomerDTO, CustomerLiteDTO, CustomerPageDTO
 from .expense_categoryDTO import ExpenseCategoryDTO
-from .expense_DTO import ExpenseDTO, ExpenseListDTO, ExpensePageDTO
+from .expense_DTO import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
 from .investment_DTO import InvestmentDTO, InvestmentPageDTO
 from .loan_DTO import LoanDTO, LoanPageDTO
-from .product_DTO import ProductDTO, ProductPageDTO
+from .product_DTO import ProductDTO, ProductPageDTO, SaleProductsDTO
 from .profit_DTO import ProfitDTO, ProfitPageDTO
 from .profit_itemDTO import ProfitItemDTO
 from .purchase_DTO import PurchaseDTO, PurchasePageDTO
@@ -18,17 +18,44 @@ from .sale_paymentDTO import SalePaymentDTO, SalePaymentViewDTO
 from .status_DTO import StatusDTO
 from .supplier_DTO import SupplierDTO, SupplierLiteDTO, SupplierPageDTO
 from .transaction_DTO import TransactionDTO, TransactionViewDTO, TransactionPageDTO
-
+from .dashboard_DTO import (
+    Bucket,
+    Granularity,
+    RequestMetaDTO,
+    SegmentMetaDTO,
+    SalesSeriesItemDTO,
+    SalesSeriesDTO,
+    ARItemDTO,
+    SalesBlockDTO,
+    PurchasesSeriesItemDTO,
+    PurchasesSeriesDTO,
+    APItemDTO,
+    PurchasesBlockDTO,
+    ExpensesSeriesItemDTO,
+    ExpensesSeriesDTO,
+    ExpensesBlockDTO,
+    ProfitSeriesItemDTO,
+    ProfitSeriesDTO,
+    ProfitBlockDTO,
+    BankItemDTO,
+    BanksSummaryDTO,
+    TopProductItemDTO,
+    CreditItemDTO,
+    CreditsSummaryDTO,
+    InvestmentItemDTO,
+    InvestmentsSummaryDTO,
+    FinalReportDTO,
+)
 
 __all__ = [
-    "SaleInvoiceBankDTO",
+    "BankDTO","SaleInvoiceBankDTO",
     "CompanyDTO", "Regimen",
-    "CustomerDTO", "CustomerLiteDTO",
+    "CustomerDTO", "CustomerLiteDTO","CustomerPageDTO",
     "ExpenseCategoryDTO",
-    "ExpenseDTO", "ExpenseListDTO", "ExpensePageDTO",
+    "ExpenseDTO", "ExpenseViewDTO", "ExpensePageDTO",
     "InvestmentDTO", "InvestmentPageDTO",
     "LoanDTO", "LoanPageDTO",
-    "ProductDTO", "ProductPageDTO",
+    "ProductDTO", "ProductPageDTO", "SaleProductsDTO",
     "ProfitDTO", "ProfitPageDTO",
     "ProfitItemDTO",
     "PurchaseDTO", "PurchasePageDTO",
@@ -41,4 +68,30 @@ __all__ = [
     "StatusDTO",
     "SupplierDTO", "SupplierLiteDTO", "SupplierPageDTO",
     "TransactionDTO", "TransactionViewDTO", "TransactionPageDTO",
+    "Bucket",
+    "Granularity",
+    "RequestMetaDTO",
+    "SegmentMetaDTO",
+    "SalesSeriesItemDTO",
+    "SalesSeriesDTO",
+    "ARItemDTO",
+    "SalesBlockDTO",
+    "PurchasesSeriesItemDTO",
+    "PurchasesSeriesDTO",
+    "APItemDTO",
+    "PurchasesBlockDTO",
+    "ExpensesSeriesItemDTO",
+    "ExpensesSeriesDTO",
+    "ExpensesBlockDTO",
+    "ProfitSeriesItemDTO",
+    "ProfitSeriesDTO",
+    "ProfitBlockDTO",
+    "BankItemDTO",
+    "BanksSummaryDTO",
+    "TopProductItemDTO",
+    "CreditItemDTO",
+    "CreditsSummaryDTO",
+    "InvestmentItemDTO",
+    "InvestmentsSummaryDTO",
+    "FinalReportDTO",
 ]

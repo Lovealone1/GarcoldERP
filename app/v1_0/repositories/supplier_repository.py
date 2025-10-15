@@ -70,23 +70,19 @@ class SupplierRepository(BaseRepository[Supplier]):
         return True
 
     async def list_paginated(
-        self,
-        offset: int,
-        limit: int,
-        session: AsyncSession
+    self, offset: int, limit: int, session: AsyncSession
     ) -> Tuple[List[Supplier], int]:
-        """
-        Paginated list ordered by ID ASC. Returns (items, total).
-        """
         stmt = (
             select(Supplier)
             .order_by(Supplier.id.asc())
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
-        total = await session.scalar(select(func.count(Supplier.id)))
-        return items, int(total or 0)
+
+        result = await session.execute(stmt)
+        items: List[Supplier] = list(result.scalars().all())   
+        total: int = (await session.scalar(select(func.count(Supplier.id)))) or 0
+        return items, total
 
     async def list_suppliers(
         self,

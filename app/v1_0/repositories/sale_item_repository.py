@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Sequence
 from datetime import date, timedelta
 
 from sqlalchemy import select, delete, func
@@ -13,15 +13,16 @@ class SaleItemRepository(BaseRepository[SaleItem]):
         super().__init__(SaleItem)
 
     async def get_by_sale_id(
-        self,
-        sale_id: int,
-        session: AsyncSession
-    ) -> List[SaleItem]:
+    self,
+    sale_id: int,
+    session: AsyncSession
+    ) -> Sequence[SaleItem]:
         """
         Return all SaleItem rows linked to a sale_id.
         """
         stmt = select(SaleItem).where(SaleItem.sale_id == sale_id)
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.scalars(stmt)
+        return result.all()
 
     async def delete_item(
         self,
@@ -93,9 +94,9 @@ class SaleItemRepository(BaseRepository[SaleItem]):
                 SaleItem.quantity,
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .where(Sale.sale_date >= date_from)
-            .where(Sale.sale_date < upper_exclusive)
-            .order_by(Sale.sale_date.asc(), SaleItem.sale_id.asc())
+            .where(Sale.created_at >= date_from)
+            .where(Sale.created_at < upper_exclusive)
+            .order_by(Sale.created_at.asc(), SaleItem.sale_id.asc())
         )
         rows = await session.execute(stmt)
         return [
@@ -128,8 +129,8 @@ class SaleItemRepository(BaseRepository[SaleItem]):
                 func.coalesce(func.sum(SaleItem.quantity), 0).label("total_quantity"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .where(Sale.sale_date >= date_from)
-            .where(Sale.sale_date < upper_exclusive)
+            .where(Sale.created_at >= date_from)
+            .where(Sale.created_at < upper_exclusive)
             .group_by(SaleItem.product_id)
             .order_by(func.sum(SaleItem.quantity).desc())
         )

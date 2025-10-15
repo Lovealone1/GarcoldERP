@@ -75,8 +75,9 @@ class InvestmentRepository(BaseRepository[Investment]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
-        total = await session.scalar(select(func.count(Investment.id)))
+        result = await session.execute(stmt)
+        items: List[Investment] = list(result.scalars().all())
+        total = await session.scalar(select(func.count(Investment.id))) or 0
         return items, int(total or 0)
 
     async def list_all(
@@ -87,4 +88,5 @@ class InvestmentRepository(BaseRepository[Investment]):
         Return ALL investments (unpaginated), ordered by ID ASC.
         """
         stmt = select(Investment).order_by(Investment.id.asc())
-        return (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        return list(result.scalars().all())

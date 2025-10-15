@@ -1,24 +1,24 @@
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.models import CategoriaGastos
-from app.v1_0.entities import ExpenseCategoryDTO
+from app.v1_0.models import ExpenseCategory
+from app.v1_0.schemas import ExpenseCategoryCreate
 from .base_repository import BaseRepository
 
-class ExpenseCategoryRepository(BaseRepository[CategoriaGastos]):
+class ExpenseCategoryRepository(BaseRepository[ExpenseCategory]):
     def __init__(self):
-        super().__init__(CategoriaGastos)
+        super().__init__(ExpenseCategory)
 
     async def create_category(
         self,
-        dto: ExpenseCategoryDTO,
+        schema: ExpenseCategoryCreate,
         session: AsyncSession
-    ) -> CategoriaGastos:
+    ) -> ExpenseCategory:
         """
         Create a new category from DTO.
         Ignores dto.id if DB auto-generates PK.
         """
-        category = CategoriaGastos(nombre=dto.name)
+        category = ExpenseCategory(nombre=schema.name)
         await self.add(category, session)
         return category
 
@@ -26,14 +26,14 @@ class ExpenseCategoryRepository(BaseRepository[CategoriaGastos]):
         self,
         category_id: int,
         session: AsyncSession
-    ) -> Optional[CategoriaGastos]:
+    ) -> Optional[ExpenseCategory]:
         return await super().get_by_id(category_id, session=session)
 
     async def get_all_categories(
         self,
         session: AsyncSession
-    ) -> List[CategoriaGastos]:
-        return await super().get_all(session=session)
+    ) -> List[ExpenseCategory]:
+        return await super().list_all(session=session)
 
     async def delete_category(
         self,

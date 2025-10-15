@@ -48,6 +48,36 @@ class CustomerRepository(BaseRepository[Customer]):
         await self.update(c, session)
         return c
 
+    async def decrease_balance(self, customer_id: int, amount: float, session: AsyncSession) -> Optional[Customer]:
+        """
+        Decrease customer's balance by `amount` (floored at 0).
+        """
+        c = await self.get_customer_by_id(customer_id, session)
+        if not c:
+            return None
+        current = float(c.balance or 0.0)
+        c.balance = max(current - float(amount or 0.0), 0.0)
+        await self.update(c, session)
+        return c
+
+    async def increase_balance(
+    self,
+    customer_id: int,
+    amount: float,
+    session: AsyncSession,
+    ) -> Optional[Customer]:
+        """
+        Increase customer's balance by `amount` (treats None as 0).
+        """
+        c = await self.get_customer_by_id(customer_id, session)
+        if not c:
+            return None
+        inc = max(float(amount or 0.0), 0.0)
+        current = float(c.balance or 0.0)
+        c.balance = current + inc
+        await self.update(c, session)
+        return c
+
     async def delete_customer(self, customer_id: int, session: AsyncSession) -> bool:
         c = await self.get_customer_by_id(customer_id, session)
         if not c:
@@ -55,8 +85,16 @@ class CustomerRepository(BaseRepository[Customer]):
         await self.delete(c, session)
         return True
 
-    async def list_paginated_models(self, offset: int, limit: int, session: AsyncSession) -> Tuple[List[Customer], int]:
-        stmt = select(Customer).order_by(Customer.id.asc()).offset(offset).limit(limit)
-        items = (await session.execute(stmt)).scalars().all()
-        total = await session.scalar(select(func.count(Customer.id))) or 0
-        return items, int(total)
+    async def list_paginated(
+    self, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[List[Customer], int]:
+        stmt = (
+            select(Customer)
+            .order_by(Customer.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        items: List[Customer] = list(result.scalars().all())
+        total: int = (await session.scalar(select(func.count(Customer.id)))) or 0
+        return items, total

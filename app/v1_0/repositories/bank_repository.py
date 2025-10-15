@@ -1,30 +1,22 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.models import Bank  
-from app.v1_0.schemas import BankCreateSchema
+from app.v1_0.models import Bank
+from app.v1_0.schemas import BankCreate  
 from .base_repository import BaseRepository
 
-class BankRepository(BaseRepository[Bank]):
-    """
-    Repository for Bank model.
-    English API with Spanish aliases preserved for backwards compatibility.
-    """
 
-    def __init__(self):
+class BankRepository(BaseRepository[Bank]):
+    """Repository for Bank model."""
+
+    def __init__(self) -> None:
         super().__init__(Bank)
 
-    async def create_bank(
-        self,
-        dto: BankCreateSchema,
-        session: AsyncSession
-    ) -> Bank:
-        """
-        Create a new Bank from the incoming DTO and flush to assign its ID.
-        """
+    async def create_bank(self, dto: BankCreate, session: AsyncSession) -> Bank:
         bank = Bank(**dto.model_dump())
-        await self.add(bank, session)
+        await self.add(bank, session)  # flush/refresh inside BaseRepository.add()
         return bank
 
     async def update_balance(
@@ -39,73 +31,42 @@ class BankRepository(BaseRepository[Bank]):
         bank = await self.get_by_id(bank_id, session)
         if not bank:
             return None
-
-        bank.saldo = new_balance
-        bank.fecha_actualizacion = datetime.now()
+        bank.balance = new_balance
+        bank.updated_at = datetime.now(timezone.utc)
         await self.update(bank, session)
         return bank
 
-    async def delete_bank(
-        self,
-        bank_id: int,
-        session: AsyncSession
-    ) -> bool:
-        """
-        Delete a Bank by its ID.
+    async def decrease_balance(self, bank_id: int, amount: float, session: AsyncSession) -> Bank:
+        bank = await self.get_by_id(bank_id, session)
+        if bank is None:
+            raise ValueError("bank_not_found")
 
-        Returns
-        -------
-        bool
-            True if the bank existed and was deleted. False otherwise.
-        """
+        bank.balance = (bank.balance or 0.0) - amount
+        bank.updated_at = datetime.now(timezone.utc)
+        await self.update(bank, session)
+        return bank
+
+    async def increase_balance(self, bank_id: int, amount: float, session: AsyncSession) -> Bank:
+        bank = await self.get_by_id(bank_id, session)
+        if bank is None:
+            raise ValueError("bank_not_found")
+
+        bank.balance = (bank.balance or 0.0) + amount
+        bank.updated_at = datetime.now(timezone.utc)
+        await self.update(bank, session)
+        return bank
+    
+    async def delete_bank(self, bank_id: int, session: AsyncSession) -> bool:
         bank = await self.get_by_id(bank_id, session)
         if not bank:
             return False
-
         await self.delete(bank, session)
         return True
-
-    async def increase_balance(
-        self,
-        bank_id: int,
-        amount: float,
-        session: AsyncSession
-    ) -> Optional[Bank]:
-        """
-        Increase the Bank balance and update the timestamp.
-        """
-        bank = await self.get_by_id(bank_id, session)
-        if not bank:
-            return None
-
-        bank.saldo += amount
-        bank.fecha_actualizacion = datetime.now()
-        await self.update(bank, session)
-        return bank
-
-    async def decrease_balance(
-        self,
-        bank_id: int,
-        amount: float,
-        session: AsyncSession
-    ) -> Optional[Bank]:
-        """
-        Decrease the Bank balance and update the timestamp.
-        """
-        bank = await self.get_by_id(bank_id, session)
-        if not bank:
-            return None
-
-        bank.saldo -= amount
-        bank.fecha_actualizacion = datetime.now()
-        await self.update(bank, session)
-        return bank
 
     async def list_banks(
         self,
         session: AsyncSession
     ) -> List[Bank]:
-        """
-        Return all Banks with all fields.
-        """
-        return await self.get_all(session)
+
+        result = await session.execute(select(Bank))
+        return list(result.scalars().all())

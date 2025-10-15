@@ -1,5 +1,5 @@
-from decimal import Decimal
-from sqlalchemy import String, Numeric, DateTime, func
+from datetime import datetime
+from sqlalchemy import String, Numeric, DateTime, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -13,5 +13,9 @@ class Customer(Base):
     city: Mapped[str | None] = mapped_column(String)
     phone: Mapped[str | None] = mapped_column(String)
     email: Mapped[str | None] = mapped_column(String)
-    created_at: Mapped[None] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    balance: Mapped[float] = mapped_column(
+        Numeric(14, 2, asdecimal=False),
+        nullable=False,
+        server_default=text("0.00"),
+    )

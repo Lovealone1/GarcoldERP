@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
-from app.v1_0.dto.page import PageDTO
+from .page import PageDTO
 
 @dataclass(slots=True)
 class TransactionDTO:
@@ -11,6 +11,7 @@ class TransactionDTO:
     type_id: int
     description: Optional[str]
     created_at: datetime
+    is_auto: bool
 
 @dataclass(slots=True)
 class TransactionViewDTO:

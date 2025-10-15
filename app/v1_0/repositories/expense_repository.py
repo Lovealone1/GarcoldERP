@@ -58,7 +58,8 @@ class ExpenseRepository(BaseRepository[Expense]):
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
+        result = await session.execute(stmt)
+        items: List[Expense] = list(result.scalars().all())
         total = await session.scalar(select(func.count(Expense.id)))
         return items, int(total or 0)
 

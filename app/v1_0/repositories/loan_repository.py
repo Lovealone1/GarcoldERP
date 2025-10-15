@@ -1,21 +1,20 @@
-# app/v1_0/repositories/loan_repository.py
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Loan
-from app.v1_0.entities import LoanDTO
+from app.v1_0.schemas import LoanCreate
 from .base_repository import BaseRepository
 
 class LoanRepository(BaseRepository[Loan]):
     def __init__(self) -> None:
         super().__init__(Loan)
 
-    async def create_loan(self, dto: LoanDTO, session: AsyncSession) -> Loan:
-        """
-        Create a new Loan from DTO and flush to assign its ID.
-        """
-        entity = Loan(**dto.model_dump())
+    async def create_loan(self, payload: LoanCreate, session: AsyncSession) -> Loan:
+        entity = Loan(
+            name=payload.name,
+            amount=payload.amount,
+        )
         await self.add(entity, session)
         return entity
 
@@ -53,24 +52,18 @@ class LoanRepository(BaseRepository[Loan]):
         return True
 
     async def list_paginated(
-        self,
-        offset: int,
-        limit: int,
-        session: AsyncSession
+    self, offset: int, limit: int, session: AsyncSession
     ) -> Tuple[List[Loan], int]:
-        """
-        Paginated list of Loans, ordered by ID ascending.
-        Returns (items, total).
-        """
         stmt = (
             select(Loan)
             .order_by(Loan.id.asc())
             .offset(offset)
             .limit(limit)
         )
-        items = (await session.execute(stmt)).scalars().all()
-        total = await session.scalar(select(func.count(Loan.id)))
-        return items, int(total or 0)
+        result = await session.execute(stmt)
+        items: List[Loan] = list(result.scalars().all())
+        total: int = (await session.scalar(select(func.count(Loan.id)))) or 0
+        return items, total
 
     async def list_all(self, session: AsyncSession) -> List[Loan]:
         """
