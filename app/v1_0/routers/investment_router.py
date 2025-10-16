@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import InvestmentCreate
 from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
-from app.v1_0.services.investment_service import InvestmentService
+from app.v1_0.services import InvestmentService
 
 router = APIRouter(prefix="/investments", tags=["Investments"])
 

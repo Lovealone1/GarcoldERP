@@ -1,5 +1,5 @@
-from typing import Optional, List, Tuple, Dict, Any
-from sqlalchemy import select, func
+from typing import Optional, List, Tuple, Dict, Any, Iterable, Mapping
+from sqlalchemy import select, func, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Supplier
@@ -94,3 +94,39 @@ class SupplierRepository(BaseRepository[Supplier]):
         stmt = select(Supplier.id, Supplier.name).order_by(Supplier.name.asc())
         rows = await session.execute(stmt)
         return [(sid, name) for sid, name in rows.all()]
+    
+    async def insert_many(
+        self,
+        rows: Iterable[Mapping[str, object]],
+        session: AsyncSession,
+        *,
+        chunk_size: int = 100,
+    ) -> int:
+        """
+        Inserta proveedores en lotes. No envía PK ni created_at.
+        Retorna cantidad insertada. Lanza excepción de DB ante constraint violations.
+        """
+        cols = {
+            c.name
+            for c in Supplier.__table__.columns
+            if not c.primary_key and c.name not in {"created_at"}
+        }
+
+        total = 0
+        batch: list[dict] = []
+
+        for r in rows:
+            m = {k: r.get(k) for k in cols if r.get(k) is not None}
+            if not m:
+                continue
+            batch.append(m)
+            if len(batch) >= chunk_size:
+                await session.execute(insert(Supplier), batch)
+                total += len(batch)
+                batch.clear()
+
+        if batch:
+            await session.execute(insert(Supplier), batch)
+            total += len(batch)
+
+        return total

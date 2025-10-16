@@ -8,7 +8,7 @@ from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
 from app.v1_0.entities import SaleDTO, SalePageDTO, SaleItemViewDTO
-from app.v1_0.services.sale_service import SaleService
+from app.v1_0.services import SaleService
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
 

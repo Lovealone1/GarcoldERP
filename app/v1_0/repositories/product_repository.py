@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Iterable, Mapping
 from datetime import date, timedelta
 
 from sqlalchemy import select, func, and_
@@ -211,3 +211,43 @@ class ProductRepository(BaseRepository[Product]):
             )
             for r in rows
         ]
+
+    async def insert_many(
+        self,
+        rows: Iterable[Mapping[str, object]],
+        session: AsyncSession,
+        *,
+        chunk_size: int = 100,
+    ) -> int:
+        """
+        Inserta masivamente (sin upsert) en product.
+        Omite PK y created_at. Respeta defaults de la DB.
+        Retorna la cantidad insertada.
+        """
+        from sqlalchemy import insert
+
+        insertable = {
+            c.name
+            for c in Product.__table__.columns
+            if not c.primary_key and c.name not in {"created_at"}
+        }
+
+        total = 0
+        batch: list[dict] = []
+
+        for r in rows:
+            m = {k: r.get(k) for k in insertable if r.get(k) is not None}
+            if not m:
+                continue
+            batch.append(m)
+
+            if len(batch) >= chunk_size:
+                await session.execute(insert(Product), batch)
+                total += len(batch)
+                batch.clear()
+
+        if batch:
+            await session.execute(insert(Product), batch)
+            total += len(batch)
+
+        return total

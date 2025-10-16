@@ -39,7 +39,9 @@ from app.v1_0.services import (
     ProfitService,
     InvoiceService, 
     DashboardService, 
-    MediaService
+    MediaService, 
+    ImportService, 
+    ExportService
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -185,4 +187,16 @@ class APIContainer(containers.DeclarativeContainer):
         MediaService,
         media_repository=media_repository,
         storage=cloud_storage_service,
+    )
+    import_service = providers.Singleton(
+        ImportService,
+        customer_repository=customer_repository,
+        supplier_repository=supplier_repository,  
+        product_repository=product_repository,
+    )
+    export_service = providers.Singleton(
+        ExportService,
+        customer_service=customer_service,
+        product_service=product_service,
+        supplier_service=supplier_service
     )

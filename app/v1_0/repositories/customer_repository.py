@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Iterable, Mapping
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,7 @@ from .base_repository import BaseRepository
 class CustomerRepository(BaseRepository[Customer]):
     def __init__(self):
         super().__init__(Customer)
-
+    
     async def create_customer(self, payload: CustomerCreate, session: AsyncSession) -> Customer:
         c = Customer(
             name=payload.name,
@@ -98,3 +98,40 @@ class CustomerRepository(BaseRepository[Customer]):
         items: List[Customer] = list(result.scalars().all())
         total: int = (await session.scalar(select(func.count(Customer.id)))) or 0
         return items, total
+    
+    async def insert_many(
+    self,
+    rows: Iterable[Mapping[str, object]],
+    session: AsyncSession,
+    *,
+    chunk_size: int = 100,
+    ) -> int:
+        from sqlalchemy import insert
+
+        insertable = {
+            c.name
+            for c in Customer.__table__.columns
+            if not c.primary_key and c.name not in {"created_at"}
+        }
+
+        total = 0
+        batch: list[dict] = []
+
+        for r in rows:
+            m = {k: r.get(k) for k in insertable if r.get(k) is not None}
+            if "balance" in insertable and m.get("balance") is None:
+                m["balance"] = 0.0
+            if not m:
+                continue
+            batch.append(m)
+
+            if len(batch) >= chunk_size:
+                await session.execute(insert(Customer), batch)
+                total += len(batch)
+                batch.clear()
+
+        if batch:
+            await session.execute(insert(Customer), batch)
+            total += len(batch)
+
+        return total

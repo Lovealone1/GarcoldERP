@@ -8,7 +8,7 @@ from app.v1_0.repositories import (
     BankRepository,
     ExpenseCategoryRepository,
 )
-from app.v1_0.services.transaction_service import TransactionService
+from app.v1_0.services import TransactionService
 from app.v1_0.schemas import ExpenseCreate, TransactionCreate
 from app.v1_0.entities import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
 

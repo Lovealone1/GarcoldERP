@@ -8,7 +8,7 @@ from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
 from app.v1_0.entities import StatusDTO
-from app.v1_0.services.status_service import StatusService
+from app.v1_0.services import StatusService
 
 router = APIRouter(prefix="/statuses", tags=["Statuses"])
 

@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import PurchasePaymentCreate
 from app.v1_0.entities import PurchasePaymentDTO, PurchasePaymentViewDTO
-from app.v1_0.services.purchase_payment_service import PurchasePaymentService
+from app.v1_0.services import PurchasePaymentService
 
 router = APIRouter(prefix="/purchase-payments", tags=["PurchasePayments"])
 

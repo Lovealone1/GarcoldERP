@@ -8,7 +8,7 @@ from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
 from app.v1_0.entities import ProfitDTO, ProfitPageDTO, ProfitItemDTO
-from app.v1_0.services.profit_service import ProfitService
+from app.v1_0.services import ProfitService
 
 router = APIRouter(prefix="/profits", tags=["Profits"])
 

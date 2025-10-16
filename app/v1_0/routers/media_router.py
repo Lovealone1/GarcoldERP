@@ -11,7 +11,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 from app.v1_0.schemas import MediaOutDTO, MediaKindDTO
-from app.v1_0.services.media_service import MediaService
+from app.v1_0.services import MediaService
 from app.v1_0.repositories import MediaRepository
 from app.storage.cloud_storage.types import ALLOWED_IMAGE_MIME
 from app.storage.cloud_storage.service import CloudStorageService
