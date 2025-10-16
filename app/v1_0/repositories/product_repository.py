@@ -78,6 +78,19 @@ class ProductRepository(BaseRepository[Product]):
         await self.update(entity, session)
         return entity
 
+    async def toggle_active(
+        self,
+        product_id: int,
+        session: AsyncSession
+    ) -> Optional[Product]:
+        """Invierte el flag is_active de un Product y devuelve la entidad."""
+        entity = await self.get_product_by_id(product_id, session)
+        if not entity:
+            return None
+        entity.is_active = not bool(entity.is_active)
+        await self.update(entity, session)
+        return entity
+
     async def decrease_quantity(
         self,
         product_id: int,

@@ -153,6 +153,29 @@ class ProductService:
             logger.error(f"[ProductService] Delete failed ID={product_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to delete product")
 
+    async def toggle_active(self, product_id: int, db: AsyncSession) -> ProductDTO:
+        logger.info(f"[ProductService] Toggle active ID={product_id}")
+        try:
+            async with db.begin():
+                p = await self.product_repository.toggle_active(product_id, db)
+            if not p:
+                raise HTTPException(status_code=404, detail="Product not found.")
+            return ProductDTO(
+                id=p.id,
+                reference=p.reference,
+                description=p.description,
+                quantity=p.quantity,
+                purchase_price=p.purchase_price,
+                sale_price=p.sale_price,
+                is_active=p.is_active,
+                created_at=p.created_at,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[ProductService] Toggle active failed ID={product_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to toggle product state")
+
     async def increase_quantity(self, product_id: int, amount: int, db: AsyncSession) -> ProductDTO:
         if amount <= 0:
             raise HTTPException(status_code=400, detail="Amount must be greater than zero.")

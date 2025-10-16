@@ -157,6 +157,28 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found")
     return {"message": f"Product with ID {product_id} deleted successfully"}
 
+@router.patch(
+    "/by-id/{product_id}/toggle-active",
+    response_model=ProductDTO,
+    summary="Toggle product active flag",
+)
+@inject
+async def toggle_product_active(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+    service: ProductService = Depends(
+        Provide[ApplicationContainer.api_container.product_service]
+    ),
+):
+    logger.info(f"[ProductRouter] toggle_active id={product_id}")
+    try:
+        return await service.toggle_active(product_id, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ProductRouter] toggle_active error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to toggle product state")
+
 
 @router.patch(
     "/by-id/{product_id}/increase",
