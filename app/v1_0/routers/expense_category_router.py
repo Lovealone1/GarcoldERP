@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import ExpenseCategoryCreate
 from app.v1_0.entities import ExpenseCategoryDTO
-from app.v1_0.services.expense_category_service import ExpenseCategoryService
+from app.v1_0.services import ExpenseCategoryService
 
 router = APIRouter(prefix="/expense-categories", tags=["Expense Categories"])
 

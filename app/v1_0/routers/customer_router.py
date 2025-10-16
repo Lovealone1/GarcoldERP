@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import CustomerCreate, CustomerUpdate
 from app.v1_0.entities import CustomerDTO, CustomerPageDTO
-from app.v1_0.services.customer_service import CustomerService
+from app.v1_0.services import CustomerService
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 

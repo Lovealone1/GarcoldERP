@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import LoanCreate
 from app.v1_0.entities import LoanDTO, LoanPageDTO
-from app.v1_0.services.loan_service import LoanService
+from app.v1_0.services import LoanService
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 

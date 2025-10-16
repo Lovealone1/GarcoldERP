@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import ExpenseCreate
 from app.v1_0.entities import ExpenseDTO, ExpensePageDTO
-from app.v1_0.services.expense_service import ExpenseService
+from app.v1_0.services import ExpenseService
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 

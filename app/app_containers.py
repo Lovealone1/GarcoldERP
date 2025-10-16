@@ -21,7 +21,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
                 "app.v1_0.routers.profit_router", 
                 "app.v1_0.routers.invoice_router", 
                 "app.v1_0.routers.dashboard_router",
-                "app.v1_0.routers.media_router"
+                "app.v1_0.routers.media_router",
+                "app.v1_0.routers.import_router",
+                "app.v1_0.routers.export_router",
             ]
     )
     db_session = providers.Object(async_session)

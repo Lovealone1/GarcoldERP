@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import SupplierCreate
 from app.v1_0.entities import SupplierDTO, SupplierPageDTO
-from app.v1_0.services.supplier_service import SupplierService
+from app.v1_0.services import SupplierService
 
 router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 

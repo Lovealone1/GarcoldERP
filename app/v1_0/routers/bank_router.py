@@ -9,7 +9,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import BankCreate
 from app.v1_0.entities import BankDTO
-from app.v1_0.services.bank_service import BankService
+from app.v1_0.services import BankService
 
 router = APIRouter(prefix="/banks", tags=["Banks"])
 

@@ -10,7 +10,7 @@ from app.core.logger import logger
 
 from app.v1_0.schemas import ProductUpsert
 from app.v1_0.entities import ProductDTO, ProductPageDTO, SaleProductsDTO
-from app.v1_0.services.product_service import ProductService
+from app.v1_0.services import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products"])
 

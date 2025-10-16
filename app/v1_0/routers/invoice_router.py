@@ -8,7 +8,7 @@ from app.core.logger import logger
 
 from app.utils.pdf_renderer import PdfRenderer
 from app.v1_0.entities import SaleInvoiceDTO
-from app.v1_0.services.invoice_service import InvoiceService
+from app.v1_0.services import InvoiceService
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 

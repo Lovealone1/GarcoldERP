@@ -7,7 +7,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.v1_0.schemas import TransactionCreate
 from app.v1_0.entities import TransactionDTO, TransactionPageDTO
-from app.v1_0.services.transaction_service import TransactionService
+from app.v1_0.services import TransactionService
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
