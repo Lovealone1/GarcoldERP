@@ -7,6 +7,7 @@ from .investment_router import router as investment_router
 from .status_router import router as status_router
 from .transaction_router import router as transaction_router
 from .expense_router import router as expense_router
+from .expense_category_router import router as expense_category_router
 from .sale_router import router as sale_router
 from .sale_payment_router import router as sale_payment_router
 from .purchase_router import router as purchase_router
@@ -27,6 +28,7 @@ defined_routers = [
     status_router,
     transaction_router,
     expense_router,
+    expense_category_router,
     sale_router,
     sale_payment_router,
     purchase_router,

@@ -21,5 +21,6 @@ class TransactionViewDTO:
     type_str: str
     description: Optional[str]
     created_at: datetime
+    is_auto: bool
 
 TransactionPageDTO = PageDTO[TransactionViewDTO]

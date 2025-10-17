@@ -9,8 +9,8 @@ from app.v1_0.schemas import ExpenseCategoryCreate
 
 
 class ExpenseCategoryService:
-    def __init__(self, repo: ExpenseCategoryRepository) -> None:
-        self.repo = repo
+    def __init__(self, expense_category_repository: ExpenseCategoryRepository) -> None:
+        self.repo = expense_category_repository
 
     async def _require(self, category_id: int, db: AsyncSession):
         cat = await self.repo.get_category_by_id(category_id, db)

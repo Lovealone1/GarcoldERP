@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import List
 from .page import PageDTO
 
 @dataclass(slots=True)

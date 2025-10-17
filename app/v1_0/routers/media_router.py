@@ -123,44 +123,6 @@ async def list_product_media(
 
 
 @router.post(
-    "/purchase/{purchase_id}/invoice/upload",
-    response_model=MediaOutDTO,
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload invoice image from local file and persist",
-)
-@inject
-async def upload_invoice_file(
-    purchase_id: int = Path(..., ge=1),
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    storage: CloudStorageService = Depends(Provide[ApplicationContainer.api_container.cloud_storage_service]),
-    service: MediaService = Depends(Provide[ApplicationContainer.api_container.media_service]),
-):
-    data, ct = await _read_upload(file)
-    try:
-        key, put_url, headers = storage.presign_put(prefix=f"invoices/{purchase_id}", content_type=ct)
-        async with httpx.AsyncClient(timeout=60) as client:
-            r2 = await client.put(put_url, content=data, headers=headers)
-        if r2.status_code != 200:
-            raise HTTPException(502, detail={"r2_status": r2.status_code, "r2_text": r2.text[:500], "ct": ct})
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("[MediaRouter] R2 PUT invoice error: %s", e, exc_info=True)
-        raise HTTPException(502, "R2 upload failed")
-
-    row = await service.confirm_purchase_invoice(
-        db,
-        purchase_id=purchase_id,
-        key=key,
-        content_type=ct,
-        bytes=len(data),
-        checksum=None,
-    )
-    return MediaOutDTO(id=row.id, kind=MediaKindDTO(row.kind), key=row.key, public_url=storage.view_url(row.key))
-
-
-@router.post(
     "/purchase/{purchase_id}/upload-files",
     response_model=list[MediaOutDTO],
     status_code=status.HTTP_201_CREATED,

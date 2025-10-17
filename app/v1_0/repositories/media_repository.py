@@ -1,5 +1,7 @@
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+
 from app.v1_0.models import Media
 
 class MediaRepository:
@@ -24,7 +26,17 @@ class MediaRepository:
         return (await db.scalar(q)) or 0
 
     async def insert(self, db: AsyncSession, row: Media) -> Media:
-        db.add(row); await db.flush(); return row
+        try:
+            db.add(row)
+            await db.flush()
+            return row
+        except IntegrityError:
+            # Duplicado por (purchase_id, kind, key) o por key global.
+            # Devuelve el existente para idempotencia.
+            existing = await self.get_by_key(db, row.key)
+            if existing:
+                return existing
+            raise  # si no es ese conflicto, propaga
 
     async def delete(self, db: AsyncSession, media_id: int) -> None:
         await db.execute(delete(Media).where(Media.id == media_id))
