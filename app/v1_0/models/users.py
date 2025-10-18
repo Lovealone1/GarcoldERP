@@ -1,4 +1,3 @@
-# app/v1_0/models/users.py
 from sqlalchemy import BigInteger, Boolean, Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text as sa_text
