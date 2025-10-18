@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +29,9 @@ class AuthDeps:
             raise ValueError("usuario no provisionado")
         return user
 
-    async def permissions_for_role(self, session: AsyncSession, role_id: int) -> Set[str]:
+    async def permissions_for_role(self, session: AsyncSession, role_id: Optional[int]) -> Set[str]:
+        if not role_id:
+            return set()
         q = text("""
             select p.code
             from role_permission rp
@@ -39,12 +41,14 @@ class AuthDeps:
         rows = (await session.execute(q, {"rid": role_id})).all()
         return {r[0] for r in rows}
 
-    async def context(self, session: AsyncSession, authorization: str | None) -> AuthContext:
+    async def context(self, session: AsyncSession, authorization: Optional[str]) -> AuthContext:
         user = await self.current_user(session, authorization)
         perms = await self.permissions_for_role(session, user.role_id)
-        role_code = getattr(user.role, "code", None)
-        if role_code is None:
-            role_code = await session.scalar(select(Role.code).where(Role.id == user.role_id))
+        role_code: Optional[str] = None
+        if user.role_id:
+            role_code = getattr(user.role, "code", None) or await session.scalar(
+                select(Role.code).where(Role.id == user.role_id)
+            )
         return AuthContext(user=user, role=role_code, permissions=perms)
 
     def require_any(self, *codes: str):
