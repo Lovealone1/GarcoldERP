@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # Auth
-    SUPABASE_URL: str = ""                     # <- default para evitar el error de Pylance
+    SUPABASE_URL: str = ""                     
     SUPABASE_JWT_SECRET: SecretStr = SecretStr("")
 
     # DB
@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     MEDIA_GET_TTL_SEC: int = 604800
     MEDIA_PUT_TTL_SEC: int = 600
 
-    # ---------- validators ----------
+
     @field_validator("SUPABASE_URL")
     @classmethod
     def _normalize_supabase_url(cls, v: str) -> str:
-        return (v or "").strip().rstrip("/")   # sin slash final
+        return (v or "").strip().rstrip("/")   
 
     @field_validator("DATABASE_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "SUPABASE_JWT_SECRET")
     @classmethod

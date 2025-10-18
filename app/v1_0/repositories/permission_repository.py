@@ -37,8 +37,7 @@ class PermissionRepository(BaseRepository[Permission]):
         p.is_active = is_active
         await self.update(p, session)
         return True
-
-    # ---- RBAC helpers (usa tabla role_permission existente) ----
+    
     async def list_codes_by_role_id(self, role_id: int, session: AsyncSession) -> Set[str]:
         rows = (
             await session.execute(

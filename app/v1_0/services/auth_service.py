@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,10 +38,8 @@ class AuthService:
                 if u:
                     return await self.user_repository.upsert_basics(u, email, display_name, db)
 
-                # evitar carreras para el primer usuario
                 await self.user_repository.advisory_xact_lock(db)
 
-                # double-check dentro del candado
                 u = await self.user_repository.get_by_sub(sub, db)
                 if u:
                     return u
@@ -62,23 +60,26 @@ class AuthService:
             raise HTTPException(status_code=500, detail="Failed to ensure user")
 
     async def me(self, db: AsyncSession, *, sub: str) -> MeDTO:
-        logger.debug("[AuthService] me sub=%s", sub)
         try:
-            async with db.begin():
-                u = await self.user_repository.get_by_sub(sub, db)
-                if not u:
-                    raise HTTPException(status_code=403, detail="user_not_provisioned")
+            u = await self.user_repository.get_by_sub(sub, db)
+            if not u:
+                raise HTTPException(status_code=403, detail="user_not_provisioned")
 
+            role_code: Optional[str] = None
+            perms: List[str] = []
+
+            if u.role_id:
                 role_code = await self.role_repository.get_code_by_id(u.role_id, db)
-                perms = await self.permission_repository.list_codes_by_role_id(u.role_id, db)
+                perms_set = await self.permission_repository.list_codes_by_role_id(u.role_id, db)  
+                perms = sorted(list(perms_set))  
+            return MeDTO(
+                user_id=u.external_sub,
+                email=u.email,
+                display_name=u.display_name,
+                role=role_code,
+                permissions=perms,
+            )
 
-                return MeDTO(
-                    user_id=u.external_sub,
-                    email=u.email,
-                    display_name=u.display_name,
-                    role=role_code,
-                    permissions=sorted(perms),
-                )
         except HTTPException:
             raise
         except Exception as e:
