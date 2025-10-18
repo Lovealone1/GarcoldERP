@@ -20,7 +20,10 @@ from app.v1_0.repositories import (
     PurchaseItemRepository, 
     PurchasePaymentRepository, 
     CompanyRepository, 
-    MediaRepository
+    MediaRepository, 
+    UserRepository,
+    PermissionRepository,
+    RoleRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -43,6 +46,7 @@ from app.v1_0.services import (
     MediaService, 
     ImportService, 
     ExportService, 
+    AuthService
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -70,6 +74,9 @@ class APIContainer(containers.DeclarativeContainer):
     purchase_payment_repository = providers.Singleton(PurchasePaymentRepository)
     company_repository = providers.Singleton(CompanyRepository)
     media_repository = providers.Singleton(MediaRepository)
+    user_repository = providers.Singleton(UserRepository)
+    permission_repository = providers.Singleton(PermissionRepository)
+    role_repository = providers.Singleton(RoleRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -204,4 +211,10 @@ class APIContainer(containers.DeclarativeContainer):
         customer_service=customer_service,
         product_service=product_service,
         supplier_service=supplier_service
+    )
+    auth_service = providers.Singleton(
+        AuthService,
+        user_repository = user_repository,
+        role_repository = role_repository,
+        permission_repository = permission_repository
     )

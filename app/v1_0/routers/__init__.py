@@ -18,6 +18,7 @@ from .dashboard_router import router as dashboard_router
 from .media_router import router as media_router
 from .import_router import router as import_router
 from .export_router import router as export_router
+from .auth_router import router as auth_router
 defined_routers = [
     bank_router,
     supplier_router,
@@ -38,5 +39,6 @@ defined_routers = [
     dashboard_router,
     media_router,
     import_router,
-    export_router
+    export_router,
+    auth_router
     ]
