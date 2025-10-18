@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security.deps import auth_deps
 from app.v1_0.services import AuthService
 
-# app/v1_0/routers/_auth_helpers.py
 async def require_claims(authorization: Optional[str]) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(401, "missing Authorization")
@@ -14,9 +13,6 @@ async def require_claims(authorization: Optional[str]) -> Dict[str, Any]:
     try:
         return await auth_deps.claims(authorization)
     except ValueError as e:
-        # añade logging del mensaje exacto
-        from app.core.logger import logger
-        logger.warning(f"[Auth] verify_token failed: {e}")
         raise HTTPException(status_code=401, detail=str(e))
 
 

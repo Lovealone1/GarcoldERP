@@ -3,16 +3,13 @@ from typing import Any, Dict, List, Tuple
 import httpx
 from jose import jwk, jwt as jose_jwt
 from jose.utils import base64url_decode
-from app.core.logger import logger
 from app.core.settings import settings
-# Lee secreto (anon key) para HS256
 _HS_SECRET = ""
 try:
     _HS_SECRET = settings.SUPABASE_JWT_SECRET.get_secret_value()
 except Exception:
     pass
 
-# Cache JWKS por issuer (para RS256)
 _JWKS_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
 _LOCKS: Dict[str, asyncio.Lock] = {}
 _TTL = 600
@@ -26,7 +23,6 @@ async def _fetch_jwks(iss: str) -> List[Dict[str, Any]]:
     async with httpx.AsyncClient(timeout=10) as cli:
         for url in urls:
             r = await cli.get(url)
-            logger.info("[JWT] JWKS %s -> %s", url, r.status_code)
             if r.status_code == 200:
                 data = r.json()
                 keys = data.get("keys", data if isinstance(data, list) else None)
@@ -76,7 +72,6 @@ async def _verify_rs256(token: str, header: Dict[str, Any], claims: Dict[str, An
 async def _verify_hs256(token: str) -> Dict[str, Any]:
     if not _HS_SECRET:
         raise ValueError("HS256 requiere SUPABASE_JWT_SECRET/ANON_KEY")
-    # aud de Supabase suele ser 'authenticated'; no la forzamos
     return jose_jwt.decode(
         token,
         _HS_SECRET,
@@ -92,7 +87,6 @@ async def verify_token(token: str) -> Dict[str, Any]:
 
     header = _b64json(header_b64)
     alg = header.get("alg", "")
-    logger.info("[JWT] verify alg=%s", alg)
 
     if alg.upper() == "HS256":
         claims = await _verify_hs256(token)
