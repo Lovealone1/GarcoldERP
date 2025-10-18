@@ -32,6 +32,7 @@ from app.v1_0.services import (
     StatusService, 
     TransactionService, 
     ExpenseService, 
+    ExpenseCategoryService,
     SaleService,
     SalePaymentService, 
     PurchaseService, 
@@ -41,7 +42,7 @@ from app.v1_0.services import (
     DashboardService, 
     MediaService, 
     ImportService, 
-    ExportService
+    ExportService, 
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -110,6 +111,10 @@ class APIContainer(containers.DeclarativeContainer):
         bank_repository = bank_repository, 
         expense_category_repository = expense_category_repository,
         transaction_service = transaction_service
+    )
+    expense_category_service = providers.Singleton(
+        ExpenseCategoryService,
+        expense_category_repository = expense_category_repository
     )
     sale_service = providers.Singleton(
         SaleService,

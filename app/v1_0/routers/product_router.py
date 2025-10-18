@@ -8,7 +8,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
-from app.v1_0.schemas import ProductUpsert
+from app.v1_0.schemas import ProductUpsert, ProductRangeQuery
 from app.v1_0.entities import ProductDTO, ProductPageDTO, SaleProductsDTO
 from app.v1_0.services import ProductService
 
@@ -262,11 +262,7 @@ async def top_products(
 )
 @inject
 async def sold_in_range(
-    payload: Dict[str, Any] = Body(..., example={
-        "date_from": "2025-01-01",
-        "date_to": "2025-01-31",
-        "product_ids": [1, 2, 3]
-    }),
+    payload: ProductRangeQuery,
     db: AsyncSession = Depends(get_db),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
@@ -275,9 +271,9 @@ async def sold_in_range(
     try:
         return await service.sold_products_in_range(
             db=db,
-            date_from=payload["date_from"],
-            date_to=payload["date_to"],
-            product_ids=payload["product_ids"],
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            product_ids=payload.product_ids,
         )
     except KeyError:
         raise HTTPException(status_code=400, detail="Fields required: date_from, date_to, product_ids")

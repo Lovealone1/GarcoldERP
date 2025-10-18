@@ -160,29 +160,29 @@ class ProductRepository(BaseRepository[Product]):
         ]
 
     async def sold_products_in_range(
-        self,
-        db: AsyncSession,
-        *,
-        date_from: date,
-        date_to: date,
-        product_ids: List[int],
+    self,
+    db: AsyncSession,
+    *,
+    date_from: date,
+    date_to: date,
+    product_ids: List[int],
     ) -> List[SaleProductsDTO]:
-        """
-        Products filtered by IDs with total sold quantity in [date_from, date_to].
-        Returns SaleProductsDTO (reference, description, prices, sold qty).
-        """
         if date_from > date_to:
             date_from, date_to = date_to, date_from
         upper_exclusive = date_to + timedelta(days=1)
+
+        qty_sum = func.coalesce(func.sum(SaleItem.quantity), 0)
+        revenue_sum = func.coalesce(func.sum(SaleItem.unit_price * SaleItem.quantity), 0)
+        avg_unit_price = revenue_sum / func.nullif(qty_sum, 0)
 
         stmt = (
             select(
                 Product.id.label("id"),
                 Product.reference.label("reference"),
                 Product.description.label("description"),
-                func.coalesce(func.sum(SaleItem.quantity), 0).label("sold_quantity"),
+                qty_sum.label("quantity_sold"),
                 Product.purchase_price.label("purchase_price"),
-                Product.sale_price.label("sale_price"),
+                func.coalesce(avg_unit_price, 0).label("sale_price"),  # ← desde sale_item.unit_price
             )
             .join(SaleItem, SaleItem.product_id == Product.id)
             .join(Sale, Sale.id == SaleItem.sale_id)
@@ -193,9 +193,8 @@ class ProductRepository(BaseRepository[Product]):
                 Product.reference,
                 Product.description,
                 Product.purchase_price,
-                Product.sale_price,
             )
-            .order_by(func.sum(SaleItem.quantity).desc())
+            .order_by(qty_sum.desc())
         )
 
         rows = (await db.execute(stmt)).mappings().all()
@@ -205,7 +204,7 @@ class ProductRepository(BaseRepository[Product]):
                 id=r["id"],
                 reference=r["reference"],
                 description=r["description"],
-                sold_quanity=int(r["sold_quantity"] or 0),
+                sold_quanity=int(r["quantity_sold"] or 0),
                 purchase_price=float(r["purchase_price"] or 0),
                 sale_price=float(r["sale_price"] or 0),
             )

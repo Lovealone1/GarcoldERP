@@ -247,6 +247,7 @@ class TransactionService:
                         type_str=type_cache[t.type_id],
                         description=getattr(t, "description", None),
                         created_at=t.created_at,
+                        is_auto=t.is_auto
                     )
                 )
 
