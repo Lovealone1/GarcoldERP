@@ -13,8 +13,12 @@ class Settings(BaseSettings):
     APP_ENV: Literal["local", "dev", "staging", "prod"] = "local"
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
-    CORS_ORIGINS: str = "*"      # CSV o '*'
+    CORS_ORIGINS: str = "*"
     LOG_LEVEL: str = "INFO"
+
+    # Auth
+    SUPABASE_URL: str = ""                     
+    SUPABASE_JWT_SECRET: SecretStr = SecretStr("")
 
     # DB
     DATABASE_URL: SecretStr = SecretStr("")
@@ -27,20 +31,25 @@ class Settings(BaseSettings):
     R2_PREFIX: str = "media-dev"
 
     # Media
-    MEDIA_POLICY: MediaPolicy = "signed"      # public|signed|proxy
-    MEDIA_PUBLIC_BASE: Optional[str] = None   # requerido si policy=public
-    MEDIA_GET_TTL_SEC: int = 604800           # 7 días
+    MEDIA_POLICY: MediaPolicy = "signed"
+    MEDIA_PUBLIC_BASE: Optional[str] = None
+    MEDIA_GET_TTL_SEC: int = 604800
     MEDIA_PUT_TTL_SEC: int = 600
 
-    # -------- validators (presencia, formato) --------
-    @field_validator("DATABASE_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+
+    @field_validator("SUPABASE_URL")
+    @classmethod
+    def _normalize_supabase_url(cls, v: str) -> str:
+        return (v or "").strip().rstrip("/")   
+
+    @field_validator("DATABASE_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "SUPABASE_JWT_SECRET")
     @classmethod
     def _required_secret(cls, v, info):
         if v is None or (hasattr(v, "get_secret_value") and v.get_secret_value() == ""):
             raise ValueError(f"{info.field_name} is required (set it in .env)")
         return v
 
-    @field_validator("CF_ACCOUNT_ID", "R2_BUCKET")
+    @field_validator("CF_ACCOUNT_ID", "R2_BUCKET", "SUPABASE_URL")
     @classmethod
     def _required_plain(cls, v, info):
         if not v:
@@ -59,13 +68,13 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} must be > 0")
         return v
 
-    # -------- cross-field checks --------
     @model_validator(mode="after")
     def _cross_checks(self):
         if self.MEDIA_POLICY == "public" and not self.MEDIA_PUBLIC_BASE:
             raise ValueError("MEDIA_PUBLIC_BASE is required when MEDIA_POLICY=public")
         return self
 
+    # ---------- helpers ----------
     @property
     def CORS_ORIGINS_LIST(self) -> List[str]:
         return ["*"] if self.CORS_ORIGINS.strip() == "*" else [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
@@ -79,5 +88,10 @@ class Settings(BaseSettings):
         if self.MEDIA_POLICY == "public":
             return (self.MEDIA_PUBLIC_BASE or "").rstrip("/") or None
         return self.MEDIA_PUBLIC_BASE.rstrip("/") if self.MEDIA_PUBLIC_BASE else None
+
+    @property
+    def SUPABASE_ISS(self) -> str:
+        # útil si alguna parte necesita issuer explícito
+        return f"{self.SUPABASE_URL}/auth/v1"
 
 settings = Settings()

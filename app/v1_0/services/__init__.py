@@ -18,6 +18,7 @@ from .dashboard_service import DashboardService
 from .media_service import MediaService
 from .import_service import ImportService
 from .export_service import ExportService
+from .auth_service import AuthService
 __all__=[
     "BankService",
     "SupplierService",
@@ -38,5 +39,6 @@ __all__=[
     "DashboardService",
     "MediaService",
     "ImportService",
-    "ExportService"
+    "ExportService",
+    "AuthService"
     ]

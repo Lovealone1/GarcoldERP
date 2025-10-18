@@ -46,7 +46,7 @@ from .dashboard_DTO import (
     InvestmentsSummaryDTO,
     FinalReportDTO,
 )
-
+from .auth_DTO import MeDTO, AuthSyncDTO
 __all__ = [
     "BankDTO","SaleInvoiceBankDTO",
     "CompanyDTO", "Regimen",
@@ -94,4 +94,5 @@ __all__ = [
     "InvestmentItemDTO",
     "InvestmentsSummaryDTO",
     "FinalReportDTO",
+    "MeDTO", "AuthSyncDTO"
 ]

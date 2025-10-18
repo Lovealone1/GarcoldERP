@@ -22,6 +22,8 @@ from .transaction_type import TransactionType
 from .transaction import Transaction
 from .users import User
 from .media import Media
+from .role import Role
+from .permission import Permission
 __all__ = [
     "Base",
     "Bank",
@@ -45,5 +47,7 @@ __all__ = [
     "Supplier",
     "TransactionType",
     "User",
-    "Media"
+    "Media",
+    "Role",
+    "Permission"
 ]

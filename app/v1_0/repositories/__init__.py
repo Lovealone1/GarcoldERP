@@ -20,6 +20,9 @@ from .supplier_repository import SupplierRepository
 from .transaction_repository import TransactionRepository
 from .transaction_type_repository import TransactionTypeRepository
 from .media_repository import MediaRepository
+from .user_repository import UserRepository
+from .permission_repository import PermissionRepository
+from .role_repository import RoleRepository
 __all__ = [
     "BaseRepository",
     "BankRepository",
@@ -42,5 +45,8 @@ __all__ = [
     "SupplierRepository",
     "TransactionRepository",
     "TransactionTypeRepository",
-    "MediaRepository"
+    "MediaRepository",
+    "UserRepository",
+    "PermissionRepository",
+    "RoleRepository"
 ]
