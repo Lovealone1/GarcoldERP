@@ -13,4 +13,4 @@ class BankDTO:
     
 @dataclass(slots=True)
 class SaleInvoiceBankDTO:
-    account_number: str
+    account_number: str | None = None

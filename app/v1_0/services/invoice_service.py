@@ -1,6 +1,8 @@
 from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timezone, datetime 
+from zoneinfo import ZoneInfo
 
 from app.v1_0.entities import (
     SaleInvoiceDTO,
@@ -39,6 +41,15 @@ class InvoiceService:
         self.status_repository = status_repository
         self.product_repository = product_repository
         self.company_id = 1
+        
+    def fmt_dt(self,dt: datetime | None,
+           fmt: str = "%Y-%m-%d %H:%M",
+           tz: str = "America/Bogota") -> str | None:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)  # asume UTC si viene naive
+        return dt.astimezone(ZoneInfo(tz)).strftime(fmt)
 
     async def generate_from_sale(self, sale_id: int, db: AsyncSession) -> SaleInvoiceDTO:
         sale = await self.sale_repository.get_by_id(sale_id, session=db)
