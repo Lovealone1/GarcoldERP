@@ -19,6 +19,7 @@ from .media_service import MediaService
 from .import_service import ImportService
 from .export_service import ExportService
 from .auth_service import AuthService
+from .role_permission_service import RolePermissionService
 __all__=[
     "BankService",
     "SupplierService",
@@ -40,5 +41,6 @@ __all__=[
     "MediaService",
     "ImportService",
     "ExportService",
-    "AuthService"
+    "AuthService",
+    "RolePermissionService"
     ]

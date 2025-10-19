@@ -24,6 +24,7 @@ from .users import User
 from .media import Media
 from .role import Role
 from .permission import Permission
+from .role_permission import RolePermission
 __all__ = [
     "Base",
     "Bank",
@@ -49,5 +50,6 @@ __all__ = [
     "User",
     "Media",
     "Role",
-    "Permission"
+    "Permission",
+    "RolePermission"
 ]
