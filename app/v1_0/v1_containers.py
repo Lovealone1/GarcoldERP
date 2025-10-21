@@ -50,7 +50,8 @@ from app.v1_0.services import (
     AuthService,
     RolePermissionService, 
     SupabaseAdminService,
-    UserService
+    UserService, 
+    CompanyService
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -234,4 +235,8 @@ class APIContainer(containers.DeclarativeContainer):
     user_service = providers.Singleton(
         UserService,
         user_repository = user_repository
+    )
+    company_service = providers.Singleton(
+        CompanyService, 
+        company_repository = company_repository
     )

@@ -22,6 +22,7 @@ from .auth_service import AuthService
 from .role_permission_service import RolePermissionService
 from .supabase_admin import SupabaseAdminService
 from .user_service import UserService
+from .company_service import CompanyService
 __all__=[
     "BankService",
     "SupplierService",
@@ -46,5 +47,6 @@ __all__=[
     "AuthService",
     "RolePermissionService",
     "SupabaseAdminService",
-    "UserService"
+    "UserService",
+    "CompanyService"
     ]

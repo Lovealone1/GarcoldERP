@@ -1,5 +1,5 @@
 from .bank_DTO import BankDTO ,SaleInvoiceBankDTO
-from .company_DTO import CompanyDTO, Regimen
+from .company_DTO import CompanyDTO, Regimen, ALLOWED_FIELDS
 from .customer_DTO import CustomerDTO, CustomerLiteDTO, CustomerPageDTO
 from .expense_categoryDTO import ExpenseCategoryDTO
 from .expense_DTO import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
@@ -49,7 +49,7 @@ from .dashboard_DTO import (
 from .auth_DTO import MeDTO, AuthSyncDTO
 __all__ = [
     "BankDTO","SaleInvoiceBankDTO",
-    "CompanyDTO", "Regimen",
+    "CompanyDTO", "Regimen", "ALLOWED_FIELDS",
     "CustomerDTO", "CustomerLiteDTO","CustomerPageDTO",
     "ExpenseCategoryDTO",
     "ExpenseDTO", "ExpenseViewDTO", "ExpensePageDTO",
