@@ -1,15 +1,27 @@
 from typing import Any, Dict, List, cast
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter, 
+    Depends, 
+    HTTPException, 
+    Query, 
+    status, 
+    Path, 
+    Body
+    )
 from dependency_injector.wiring import inject, Provide
-from app.app_containers import ApplicationContainer
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.storage.database.db_connector import get_db
+from app.app_containers import ApplicationContainer
 from app.v1_0.schemas.auth_admin import (
     InviteUserIn,
     CreateUserIn,
     AdminUserOut,
     AdminUsersPage,
+    SetUserRoleIn, 
+    UpdateUserIn
 )
-from app.v1_0.services import SupabaseAdminService
+from app.v1_0.services import SupabaseAdminService, UserService
 
 router = APIRouter(prefix="/admin", tags=["admin-users"])
 
@@ -94,4 +106,54 @@ async def delete_user(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    
+@router.patch("/users/{sub}/role", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def set_user_role_by_sub(
+    body: SetUserRoleIn,
+    sub: str = Path(..., description="external_sub del usuario"),
+    db: AsyncSession = Depends(get_db),
+    svc: UserService = Depends(Provide[ApplicationContainer.api_container.user_service]),
+):
+    try:
+        await svc.set_role_by_sub(sub=sub, role_id=body.role_id, db=db)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@router.put(
+    "/{user_id}",
+    response_model=AdminUserOut,
+    status_code=status.HTTP_200_OK,
+    summary="Update a Supabase user and sync Neon",
+)
+@inject
+async def update_user(
+    user_id: str,
+    body: UpdateUserIn = Body(...),
+    supa: SupabaseAdminService = Depends(Provide[ApplicationContainer.api_container.supabase_admin_service]),
+    db: AsyncSession = Depends(get_db),
+    user_svc: UserService = Depends(Provide[ApplicationContainer.api_container.user_service]),
+):
+    try:
+        if body.full_name is not None and body.name is None:
+            body.name = body.full_name
+        elif body.name is not None and body.full_name is None:
+            body.full_name = body.name
+
+        updated: Dict[str, Any] = await supa.update(user_id, body)
+
+        if body.email is not None or body.name is not None or body.full_name is not None:
+            name_for_local = body.full_name or body.name
+            email_for_local = body.email or updated.get("email")
+            await user_svc.upsert_basics_by_sub(
+                sub=user_id, email=email_for_local, name=name_for_local, db=db
+            )
+
+        return AdminUserOut(**updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        try: await db.rollback()
+        except: pass
         raise HTTPException(status_code=502, detail=str(e))

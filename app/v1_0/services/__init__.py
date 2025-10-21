@@ -21,6 +21,7 @@ from .export_service import ExportService
 from .auth_service import AuthService
 from .role_permission_service import RolePermissionService
 from .supabase_admin import SupabaseAdminService
+from .user_service import UserService
 __all__=[
     "BankService",
     "SupplierService",
@@ -44,5 +45,6 @@ __all__=[
     "ExportService",
     "AuthService",
     "RolePermissionService",
-    "SupabaseAdminService"
+    "SupabaseAdminService",
+    "UserService"
     ]

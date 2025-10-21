@@ -2,7 +2,7 @@ import httpx
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
 from app.core.settings import settings
-from app.v1_0.schemas import InviteUserIn, CreateUserIn
+from app.v1_0.schemas import InviteUserIn, CreateUserIn, UpdateUserIn
 
 class SupabaseAdminService:
     def __init__(self) -> None:
@@ -26,6 +26,23 @@ class SupabaseAdminService:
             "app_metadata": cast(Dict[str, Any], u.get("app_metadata") or {}),
         }
 
+    async def _get_user_raw(self, user_id: str) -> Dict[str, Any]:
+        url = f"{self.base}/auth/v1/admin/users/{user_id}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, headers=self.headers)
+        if r.status_code >= 300:
+            raise RuntimeError(f"supabase_admin_get_user_failed[{r.status_code}]: {r.text}")
+
+        data: Any = r.json()
+        if isinstance(data, dict):
+            inner = data.get("user")
+            if isinstance(inner, dict):
+                return cast(Dict[str, Any], inner)
+            return cast(Dict[str, Any], data)
+
+        raise RuntimeError(f"supabase_admin_get_user_unexpected_type: {type(data).__name__}")
+
+    
     async def list_users(
     self, page: int = 1, per_page: int = 10, email: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -71,7 +88,6 @@ class SupabaseAdminService:
 
             mapped = [self._normalize_user(cast(Dict[str, Any], u)) for u in src]
 
-            # Activos primero (confirmed_at != None). Dentro de cada grupo, más recientes por created_at.
             mapped = sorted(
                 mapped,
                 key=lambda u: (
@@ -90,7 +106,6 @@ class SupabaseAdminService:
                     has_next = True
 
             return {"items": mapped, "page": page, "per_page": per_page, "has_next": has_next}
-
 
     async def invite(self, body: InviteUserIn) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"email": body.email}
@@ -134,3 +149,49 @@ class SupabaseAdminService:
             if r.status_code >= 300:
                 raise RuntimeError(f"supabase_admin_delete_failed[{r.status_code}]: {r.text}")
         return {"id": user_id, "deleted": True}
+    
+    async def update(self, user_id: str, body: UpdateUserIn) -> Dict[str, Any]:
+        if not user_id:
+            raise RuntimeError("supabase_admin_update_invalid_id")
+
+        current = await self._get_user_raw(user_id)
+        if not isinstance(current, dict):
+            raise RuntimeError("supabase_admin_update_unexpected_current_payload")
+        meta = cast(Dict[str, Any], current.get("user_metadata") or {})
+
+        payload: Dict[str, Any] = {}
+
+        if body.email is not None:
+            payload["email"] = body.email
+            meta["email"] = body.email 
+
+        if body.name is not None:
+            meta["name"] = body.name
+            meta.setdefault("full_name", body.name)
+
+        if body.full_name is not None:
+            meta["full_name"] = body.full_name
+            meta.setdefault("name", body.full_name)
+
+        if body.phone is not None:
+            meta["phone"] = body.phone
+            if "phone_verified" not in meta:
+                meta["phone_verified"] = False 
+
+        if body.email is not None or body.name is not None or body.full_name is not None or body.phone is not None:
+            payload["user_metadata"] = meta
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.put(  
+                f"{self.base}/auth/v1/admin/users/{user_id}",
+                headers=self.headers,
+                json=payload,
+            )
+            if r.status_code >= 300:
+                raise RuntimeError(f"supabase_admin_update_failed[{r.status_code}]: {r.text}")
+
+            data = r.json()
+            user = data.get("user") or data
+            if not isinstance(user, dict):
+                raise RuntimeError("supabase_admin_update_unexpected_payload: " + str(data)[:600])
+            return self._normalize_user(user)

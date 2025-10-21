@@ -32,3 +32,5 @@ class UserRepository:
         if not u: raise ValueError("user_not_found")
         u.role_id = role_id
         await session.flush()
+
+    

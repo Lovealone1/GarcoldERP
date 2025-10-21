@@ -25,3 +25,13 @@ class AdminUsersPage(BaseModel):
     page: int
     per_page: int
     has_next: bool
+    
+class SetUserRoleIn(BaseModel):
+    role_id: int
+    
+
+class UpdateUserIn(BaseModel):
+    email: Optional[EmailStr] = None           
+    name: Optional[str] = None                 
+    full_name: Optional[str] = None            
+    phone: Optional[str] = None                

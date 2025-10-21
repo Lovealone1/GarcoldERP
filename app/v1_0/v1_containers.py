@@ -49,7 +49,8 @@ from app.v1_0.services import (
     ExportService, 
     AuthService,
     RolePermissionService, 
-    SupabaseAdminService
+    SupabaseAdminService,
+    UserService
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -81,6 +82,7 @@ class APIContainer(containers.DeclarativeContainer):
     permission_repository = providers.Singleton(PermissionRepository)
     role_repository = providers.Singleton(RoleRepository)
     role_permission_repository = providers.Singleton(RolePermissionRepository)
+    
     bank_service = providers.Singleton(
         BankService, 
         bank_repository=bank_repository
@@ -228,4 +230,8 @@ class APIContainer(containers.DeclarativeContainer):
     )
     supabase_admin_service = providers.Singleton(
         SupabaseAdminService
+    )
+    user_service = providers.Singleton(
+        UserService,
+        user_repository = user_repository
     )
