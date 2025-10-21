@@ -32,7 +32,9 @@ from .media_schema import (
     PresignResponseDTO,
     ContentTypeImage
     )
-from .permission_schema import RolePermissionOut,RolePermissionsBulkIn,RolePermissionStateIn
+from .permission_schema import RolePermissionOut,RolePermissionsBulkIn,RolePermissionStateIn, PermissionDTO
+from .role_schema import RoleDTO
+from .auth_admin import CreateUserIn, AdminUserOut, InviteUserIn, AdminUsersPage
 __all__ = [
     "BankCreate", "BankUpdateBalance",
     "CustomerCreate", "CustomerUpdate",
@@ -56,5 +58,7 @@ __all__ = [
     "PresignResponseDTO",
     "MediaConfirmInDTO",
     "MediaOutDTO",
-    "RolePermissionOut","RolePermissionsBulkIn","RolePermissionStateIn"
+    "RolePermissionOut","RolePermissionsBulkIn","RolePermissionStateIn", "PermissionDTO",
+    "RoleDTO",
+    "CreateUserIn", "AdminUserOut", "InviteUserIn", "AdminUsersPage"
 ]

@@ -10,8 +10,8 @@ from app.core.logger import logger
 from app.v1_0.schemas import (
     RolePermissionOut, RolePermissionStateIn, RolePermissionsBulkIn,
 )
-from app.v1_0.services.role_permission_service import RolePermissionService
-
+from app.v1_0.services import RolePermissionService
+from app.v1_0.schemas import RoleDTO, PermissionDTO
 router = APIRouter(prefix="/roles", tags=["Roles:Permissions"])
 
 @router.get(
@@ -80,3 +80,22 @@ async def bulk_set_permissions(
     except Exception as e:
         logger.error(f"[RolePermRouter] bulk_set error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to bulk set")
+
+@router.get("/", response_model=List[RoleDTO], summary="List roles")
+@inject
+async def list_roles(
+    db: AsyncSession = Depends(get_db),
+    svc: RolePermissionService = Depends(
+        Provide[ApplicationContainer.api_container.role_permission_service]
+    ),
+) -> List[RoleDTO]:
+    return await svc.list_roles(db)
+
+# router
+@router.get("/permissions", response_model=list[PermissionDTO], summary="List permissions catalog")
+@inject
+async def list_permissions(
+    db: AsyncSession = Depends(get_db),
+    svc: RolePermissionService = Depends(Provide[ApplicationContainer.api_container.role_permission_service]),
+):
+    return await svc.list_permissions(db)

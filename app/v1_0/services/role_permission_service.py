@@ -1,11 +1,15 @@
 from fastapi import HTTPException
+from typing import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.v1_0.repositories import RolePermissionRepository
+
+from app.v1_0.models import Role
+from app.v1_0.repositories import RolePermissionRepository, RoleRepository
+from app.v1_0.schemas import RoleDTO, PermissionDTO
 
 class RolePermissionService:
-    def __init__(self, role_permission_repository: RolePermissionRepository):
+    def __init__(self, role_permission_repository: RolePermissionRepository, role_repository: RoleRepository):
         self.repo = role_permission_repository
-
+        self.role_repository = role_repository
     async def set_state(self, db: AsyncSession, role_id: int, code: str, active: bool) -> None:
         """Activa/inhabilita un permiso por code para un rol."""
         perm = await self.repo.permission_by_code(db, code)
@@ -38,3 +42,11 @@ class RolePermissionService:
     async def list_effective_codes(self, db: AsyncSession, role_id: int) -> list[str]:
         """Lista códigos efectivos (permission.is_active && link.is_active)."""
         return await self.repo.list_effective_codes(db, role_id)
+
+    async def list_roles(self, db: AsyncSession) -> list[RoleDTO]:
+        rows: Sequence[Role] = await self.role_repository.list_all(db)
+        return [RoleDTO(id=r.id, code=r.code) for r in rows]
+    
+    async def list_permissions(self, db) -> list[PermissionDTO]:
+        rows = await self.repo.list_permissions(db)
+        return [PermissionDTO(code=p.code, description=p.description, is_active=p.is_active) for p in rows]

@@ -1,6 +1,8 @@
-from sqlalchemy import select, update, func
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.postgresql import insert
+from typing import Sequence
+
 from app.v1_0.models import RolePermission, Permission
 
 class RolePermissionRepository:
@@ -11,14 +13,15 @@ class RolePermissionRepository:
 
     async def set_active(self, db: AsyncSession, role_id: int, permission_id: int, active: bool) -> None:
         stmt = (
-            pg_insert(RolePermission)
+            insert(RolePermission)
             .values(role_id=role_id, permission_id=permission_id, is_active=active)
             .on_conflict_do_update(
                 index_elements=[RolePermission.role_id, RolePermission.permission_id],
-                set_={"is_active": active, **({"updated_at": func.now()} if hasattr(RolePermission, "updated_at") else {})},
+                set_={"is_active": active},
             )
         )
         await db.execute(stmt)
+        await db.commit()   
 
     async def list_by_role(self, db: AsyncSession, role_id: int) -> list[dict]:
         stmt = (
@@ -52,3 +55,7 @@ class RolePermissionRepository:
         )
         rows = await db.execute(stmt)
         return [r[0] for r in rows.all()]
+
+    async def list_permissions(self, db) -> Sequence[Permission]:
+        res = await db.execute(select(Permission).order_by(Permission.code))
+        return res.scalars().all()
