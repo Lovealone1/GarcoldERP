@@ -1,9 +1,16 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Optional
-
+from pydantic import field_serializer
 from app.v1_0.entities import CustomerDTO, CompanyDTO, SaleInvoiceBankDTO
 
+_TZ = ZoneInfo("America/Bogota")
+
+def _to_local(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_TZ)
 
 @dataclass(slots=True)
 class SaleItemViewDescDTO:
@@ -26,3 +33,6 @@ class SaleInvoiceDTO:
     customer: CustomerDTO
     company: CompanyDTO
     items: List[SaleItemViewDescDTO]
+    @field_serializer("date")
+    def ser_date(self, dt: datetime) -> str:
+        return _to_local(dt).strftime("%Y-%m-%d %H:%M")

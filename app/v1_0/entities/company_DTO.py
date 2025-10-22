@@ -7,6 +7,19 @@ class Regimen(str, Enum):
     NO_RESPONSABLE = "NO_RESPONSABLE"
     SIMPLE = "SIMPLE"
 
+ALLOWED_FIELDS: set[str] = {
+    "razon_social",
+    "nombre_completo",
+    "cc_nit",
+    "email_facturacion",
+    "celular",
+    "direccion",
+    "municipio",
+    "departamento",
+    "codigo_postal",
+    "regimen",
+}
+
 @dataclass(slots=True)
 class CompanyDTO:
     id: int

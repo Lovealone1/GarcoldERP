@@ -23,7 +23,8 @@ from app.v1_0.repositories import (
     MediaRepository, 
     UserRepository,
     PermissionRepository,
-    RoleRepository
+    RoleRepository, 
+    RolePermissionRepository
     )
 from app.v1_0.services import (
     BankService, 
@@ -46,7 +47,11 @@ from app.v1_0.services import (
     MediaService, 
     ImportService, 
     ExportService, 
-    AuthService
+    AuthService,
+    RolePermissionService, 
+    SupabaseAdminService,
+    UserService, 
+    CompanyService
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
@@ -77,6 +82,7 @@ class APIContainer(containers.DeclarativeContainer):
     user_repository = providers.Singleton(UserRepository)
     permission_repository = providers.Singleton(PermissionRepository)
     role_repository = providers.Singleton(RoleRepository)
+    role_permission_repository = providers.Singleton(RolePermissionRepository)
     
     bank_service = providers.Singleton(
         BankService, 
@@ -217,4 +223,21 @@ class APIContainer(containers.DeclarativeContainer):
         user_repository = user_repository,
         role_repository = role_repository,
         permission_repository = permission_repository
+    )
+    role_permission_service = providers.Singleton(
+        RolePermissionService, 
+        role_permission_repository = role_permission_repository, 
+        role_repository = role_repository
+    )
+    supabase_admin_service = providers.Singleton(
+        SupabaseAdminService
+    )
+    user_service = providers.Singleton(
+        UserService,
+        user_repository = user_repository,
+        role_repository = role_repository
+    )
+    company_service = providers.Singleton(
+        CompanyService, 
+        company_repository = company_repository
     )

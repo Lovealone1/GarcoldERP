@@ -3,14 +3,14 @@ from datetime import datetime
 from typing import Optional
 
 @dataclass(slots=True)
-class BankDTO:
+class UserDTO:
     id: int
-    name: str
-    balance: float
+    external_sub: str
+    email: Optional[str]
+    display_name: Optional[str]  
+    role: Optional[str]          
+    is_active: bool
     created_at: datetime
     updated_at: Optional[datetime]
-    account_number: Optional[str]
     
-@dataclass(slots=True)
-class SaleInvoiceBankDTO:
-    account_number: str | None = None
+    

@@ -16,9 +16,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "*"
     LOG_LEVEL: str = "INFO"
 
-    # Auth
-    SUPABASE_URL: str = ""                     
+    # Auth / Supabase
+    SUPABASE_URL: str = ""
     SUPABASE_JWT_SECRET: SecretStr = SecretStr("")
+    SUPABASE_SERVICE_ROLE_KEY: SecretStr = SecretStr("")   
 
     # DB
     DATABASE_URL: SecretStr = SecretStr("")
@@ -36,13 +37,18 @@ class Settings(BaseSettings):
     MEDIA_GET_TTL_SEC: int = 604800
     MEDIA_PUT_TTL_SEC: int = 600
 
-
     @field_validator("SUPABASE_URL")
     @classmethod
     def _normalize_supabase_url(cls, v: str) -> str:
-        return (v or "").strip().rstrip("/")   
+        return (v or "").strip().rstrip("/")
 
-    @field_validator("DATABASE_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "SUPABASE_JWT_SECRET")
+    @field_validator(
+        "DATABASE_URL",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_SERVICE_ROLE_KEY",          
+    )
     @classmethod
     def _required_secret(cls, v, info):
         if v is None or (hasattr(v, "get_secret_value") and v.get_secret_value() == ""):
@@ -91,7 +97,11 @@ class Settings(BaseSettings):
 
     @property
     def SUPABASE_ISS(self) -> str:
-        # útil si alguna parte necesita issuer explícito
         return f"{self.SUPABASE_URL}/auth/v1"
+
+    @property
+    def SUPABASE_ADMIN_HEADERS(self) -> dict:
+        key = self.SUPABASE_SERVICE_ROLE_KEY.get_secret_value()
+        return {"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"}
 
 settings = Settings()

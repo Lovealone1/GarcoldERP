@@ -23,6 +23,7 @@ from .media_repository import MediaRepository
 from .user_repository import UserRepository
 from .permission_repository import PermissionRepository
 from .role_repository import RoleRepository
+from .role_permission_repository import RolePermissionRepository
 __all__ = [
     "BaseRepository",
     "BankRepository",
@@ -48,5 +49,6 @@ __all__ = [
     "MediaRepository",
     "UserRepository",
     "PermissionRepository",
-    "RoleRepository"
+    "RoleRepository",
+    "RolePermissionRepository"
 ]
