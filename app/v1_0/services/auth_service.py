@@ -8,7 +8,7 @@ from app.v1_0.repositories import (
     RoleRepository,
     PermissionRepository,
 )
-from app.v1_0.entities import MeDTO  
+from app.v1_0.entities import MeDTO, RoleOut
 from app.v1_0.models import User
 
 
@@ -65,18 +65,20 @@ class AuthService:
             if not u:
                 raise HTTPException(status_code=403, detail="user_not_provisioned")
 
-            role_code: Optional[str] = None
-            perms: List[str] = []
+            role_obj: RoleOut | None = None
+            perms: list[str] = []
 
-            if u.role_id:
+            if u.role_id is not None:
                 role_code = await self.role_repository.get_code_by_id(u.role_id, db)
-                perms_set = await self.permission_repository.list_codes_by_role_id(u.role_id, db)  
-                perms = sorted(list(perms_set))  
+                if role_code:
+                    role_obj = RoleOut(id=u.role_id, code=role_code)
+                    perms = sorted(await self.permission_repository.list_codes_by_role_id(u.role_id, db))
+
             return MeDTO(
                 user_id=u.external_sub,
                 email=u.email,
                 display_name=u.display_name,
-                role=role_code,
+                role=role_obj,
                 permissions=perms,
             )
 

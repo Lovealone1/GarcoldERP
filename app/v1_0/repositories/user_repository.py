@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from typing import List
+
 from app.v1_0.models import User
 
 class UserRepository:
@@ -8,6 +10,11 @@ class UserRepository:
     async def get_by_sub(self, sub: str, session: AsyncSession) -> User | None:
         return await session.scalar(select(User).where(User.external_sub == sub))
 
+    async def list_all(self, session: AsyncSession) -> list[User]:
+        res = await session.execute(select(User).order_by(User.display_name, User.id))
+        rows: List[User] = list(res.scalars().all())
+        return rows
+    
     async def count_all(self, session: AsyncSession) -> int:
         return int((await session.execute(text("select count(*) from users"))).scalar() or 0)
 
@@ -33,4 +40,10 @@ class UserRepository:
         u.role_id = role_id
         await session.flush()
 
-    
+    async def set_active_by_sub(self, sub: str, is_active: bool, session: AsyncSession) -> None:
+        u = await self.get_by_sub(sub, session)
+        if not u:
+            raise ValueError("user_not_found")
+        if u.is_active != is_active:
+            u.is_active = is_active
+            await session.flush()

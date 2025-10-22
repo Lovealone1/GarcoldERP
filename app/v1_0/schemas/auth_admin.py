@@ -35,3 +35,6 @@ class UpdateUserIn(BaseModel):
     name: Optional[str] = None                 
     full_name: Optional[str] = None            
     phone: Optional[str] = None                
+
+class SetUserActiveIn(BaseModel):
+    is_active: bool

@@ -234,7 +234,8 @@ class APIContainer(containers.DeclarativeContainer):
     )
     user_service = providers.Singleton(
         UserService,
-        user_repository = user_repository
+        user_repository = user_repository,
+        role_repository = role_repository
     )
     company_service = providers.Singleton(
         CompanyService, 

@@ -12,7 +12,6 @@ from app.v1_0.services import CompanyService
 
 router = APIRouter(prefix="/company", tags=["Company"])
 
-
 @router.get(
     "/",
     response_model=CompanyDTO,
@@ -57,7 +56,6 @@ async def patch_company(
         dto = await company_service.patch_company(db, **payload)
         return dto
     except ValueError as e:
-        # e.g., "company_not_found" o validaciones de dominio
         logger.warning(f"[CompanyRouter] patch_company validation_error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:

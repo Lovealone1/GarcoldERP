@@ -19,10 +19,11 @@ from app.v1_0.schemas.auth_admin import (
     AdminUserOut,
     AdminUsersPage,
     SetUserRoleIn, 
-    UpdateUserIn
+    UpdateUserIn, 
+    SetUserActiveIn
 )
 from app.v1_0.services import SupabaseAdminService, UserService
-
+from app.v1_0.entities import UserDTO
 router = APIRouter(prefix="/admin", tags=["admin-users"])
 
 @router.get(
@@ -156,4 +157,66 @@ async def update_user(
     except Exception as e:
         try: await db.rollback()
         except: pass
+        raise HTTPException(status_code=502, detail=str(e))
+
+@router.get(
+    "/users/local",
+    response_model=List[UserDTO],
+    status_code=status.HTTP_200_OK,
+    summary="Listar usuarios locales (Neon) con rol resuelto",
+)
+@inject
+async def list_local_users(
+    db: AsyncSession = Depends(get_db),
+    svc: UserService = Depends(Provide[ApplicationContainer.api_container.user_service]),
+):
+    try:
+        return await svc.list_users_full(db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get(
+    "/users/{sub}",
+    response_model=UserDTO,
+    status_code=status.HTTP_200_OK,
+    summary="Obtener usuario local por external_sub",
+)
+@inject
+async def get_user_by_sub(
+    sub: str = Path(..., description="external_sub del usuario"),
+    db: AsyncSession = Depends(get_db),
+    svc: UserService = Depends(Provide[ApplicationContainer.api_container.user_service]),
+):
+    try:
+        return await svc.get_user_full_by_sub(sub=sub, db=db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.patch(
+    "/users/{sub}/active",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Actualizar estado is_active del usuario local",
+)
+@inject
+async def set_user_active(
+    body: SetUserActiveIn,
+    sub: str = Path(..., description="external_sub del usuario"),
+    db: AsyncSession = Depends(get_db),
+    svc: UserService = Depends(Provide[ApplicationContainer.api_container.user_service]),
+):
+    try:
+        await svc.set_active_by_sub(sub=sub, is_active=body.is_active, db=db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
