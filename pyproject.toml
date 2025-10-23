@@ -28,8 +28,8 @@ httpx = ">=0.28.1,<0.29.0"
 playwright = ">=1.55.0,<2.0.0"
 httplib2 = ">=0.31.0,<0.32.0"
 email-validator = "^2.2"
-python-magic-bin = "0.4.14"
-python-multipart = "^0.0.20"
+python-magic = { version = "^0.4.27", markers = "sys_platform != 'win32'" }
+python-magic-bin = { version = "^0.4.14", markers = "sys_platform == 'win32'" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
