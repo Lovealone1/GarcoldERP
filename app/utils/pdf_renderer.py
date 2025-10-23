@@ -13,7 +13,6 @@ from app.core.settings import settings
 log = logging.getLogger("pdf")
 TMP_DIR = Path(tempfile.gettempdir())
 
-# Windows: usar Proactor para permitir Chromium + threads
 if sys.platform == "win32" and not isinstance(
     asyncio.get_event_loop_policy(), getattr(asyncio, "WindowsProactorEventLoopPolicy")
 ):

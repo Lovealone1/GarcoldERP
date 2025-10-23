@@ -1,36 +1,36 @@
-[project]
+[tool.poetry]
 name = "garcold-erp-api"
 version = "0.1.0"
 description = "Garcold ERP backend"
-authors = [
-    {name = "Daniel Garcia Osorio"}
-]
+authors = ["Daniel Garcia Osorio"]
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "sqlalchemy[asyncio] (>=2.0.43,<3.0.0)",
-    "colorlog (>=6.9.0,<7.0.0)",
-    "dependency-injector[yaml] (>=4.48.2,<5.0.0)",
-    "httplib2 (>=0.31.0,<0.32.0)",
-    "fastapi[all] (>=0.118.2,<0.119.0)",
-    "python-dotenv (>=1.1.1,<2.0.0)",
-    "uvicorn[standard] (>=0.37.0,<0.38.0)",
-    "pydantic (>=2.12.0,<3.0.0)",
-    "supabase (>=2.22.0,<3.0.0)",
-    "asyncpg (>=0.30.0,<0.31.0)",
-    "certifi (>=2025.10.5,<2026.0.0)",
-    "truststore (>=0.10.4,<0.11.0)",
-    "pydantic-settings (>=2.11.0,<3.0.0)",
-    "boto3 (>=1.40.52,<2.0.0)",
-    "python-magic-bin (>=0.4.14,<0.5.0)",
-    "playwright (>=1.55.0,<2.0.0)",
-    "pandas (>=2.2,<3)",
-    "openpyxl (>=3.1.5,<4)",
-    "python-jose[cryptography] (>=3.5.0,<4.0.0)",
-    "httpx (>=0.28.1,<0.29.0)"
-]
+package-mode = false
 
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+fastapi = "^0.118.2"
+uvicorn = { version = "^0.37.0", extras = ["standard"] }
+sqlalchemy = { version = ">=2.0.43,<3.0.0", extras = ["asyncio"] }
+asyncpg = ">=0.30.0,<0.31.0"
+pydantic = ">=2.12.0,<3.0.0"
+pydantic-settings = ">=2.11.0,<3.0.0"
+dependency-injector = { version = ">=4.48.2,<5.0.0", extras = ["yaml"] }
+colorlog = ">=6.9.0,<7.0.0"
+python-dotenv = ">=1.1.1,<2.0.0"
+supabase = ">=2.22.0,<3.0.0"
+certifi = "*"
+truststore = ">=0.10.4,<0.11.0"
+boto3 = ">=1.40.52,<2.0.0"
+pandas = ">=2.2,<3.0.0"
+openpyxl = ">=3.1.5,<4.0.0"
+python-jose = { version = ">=3.5.0,<4.0.0", extras = ["cryptography"] }
+httpx = ">=0.28.1,<0.29.0"
+playwright = ">=1.55.0,<2.0.0"
+httplib2 = ">=0.31.0,<0.32.0"
+email-validator = "^2.2"
+python-magic-bin = "0.4.14"
+python-multipart = "^0.0.20"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
