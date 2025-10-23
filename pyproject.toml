@@ -29,6 +29,7 @@ playwright = ">=1.55.0,<2.0.0"
 httplib2 = ">=0.31.0,<0.32.0"
 email-validator = "^2.2"
 filetype = "^1.2.0"
+python-multipart = "^0.0.9"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
