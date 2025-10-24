@@ -119,9 +119,14 @@ class ProductRepository(BaseRepository[Product]):
         return items, int(total or 0)
 
     async def list_products(self, session: AsyncSession) -> List[Product]:
-        stmt = select(Product).order_by(Product.id.asc())
+        stmt = (
+            select(Product)
+            .where(Product.is_active.is_(True))
+            .order_by(Product.id.asc())
+        )
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
 
     async def top_products_by_quantity(
         self,

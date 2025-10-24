@@ -66,7 +66,7 @@ class ProductService:
         logger.debug("[ProductService] List all products")
         try:
             async with db.begin():
-                rows = await self.product_repository.list_all(db)
+                rows = await self.product_repository.list_products(db)
             return [
                 ProductDTO(
                     id=p.id,
