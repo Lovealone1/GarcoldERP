@@ -1,18 +1,18 @@
 import hashlib
-
-from typing import Tuple, Dict, Any
+from typing import Dict, Any, List, Tuple, Set
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.helper.io import (
-    read_csv, read_xlsx, 
-    HeaderMapper, 
+    read_csv, read_xlsx,
+    HeaderMapper,
     validate_rows,
-    CUSTOMER_SCHEMA, 
-    SUPPLIER_SCHEMA, 
+    CUSTOMER_SCHEMA,
+    SUPPLIER_SCHEMA,
     PRODUCT_SCHEMA,
-    ImportOptions
-    )
-from app.v1_0.repositories import CustomerRepository,SupplierRepository,ProductRepository
+    ImportOptions,
+)
+from app.v1_0.repositories import CustomerRepository, SupplierRepository, ProductRepository
+
 
 class ImportService:
     def __init__(
@@ -51,8 +51,15 @@ class ImportService:
             raise HTTPException(status_code=400, detail=f"Entidad no soportada: {opts.entity}")
 
         mapped, _ = HeaderMapper(schema).apply(rows)
-        errors = validate_rows(mapped, schema)
 
+        # --- DEDUPE IN-FILE POR CLAVE ESPECÍFICA ---
+        key_field = (
+            "tax_id" if opts.entity in ("customers", "suppliers")
+            else "reference"
+        )
+        mapped, dd_stats = self._dedupe_in_file(mapped, key_field)
+
+        errors = validate_rows(mapped, schema)
         if errors:
             return {
                 "status": "failed",
@@ -60,6 +67,7 @@ class ImportService:
                 "inserted": 0,
                 "total_rows": len(mapped),
                 "errors": errors,
+                "dedupe_in_file": dd_stats,
                 "meta": meta,
             }
 
@@ -70,6 +78,7 @@ class ImportService:
                 "inserted": 0,
                 "total_rows": len(mapped),
                 "errors": [],
+                "dedupe_in_file": dd_stats,
                 "meta": meta,
             }
 
@@ -84,6 +93,7 @@ class ImportService:
             "inserted": inserted,
             "total_rows": len(mapped),
             "errors": [],
+            "dedupe_in_file": dd_stats,
             "meta": meta,
         }
 
@@ -91,5 +101,39 @@ class ImportService:
         if name.endswith(".csv"):
             return read_csv(content, delimiter=opts.delimiter)
         if name.endswith(".xlsx"):
-            return read_xlsx(content, sheet=opts.sheet, header_row=opts.header_row)  
+            return read_xlsx(content, sheet=opts.sheet, header_row=opts.header_row)
         raise HTTPException(status_code=415, detail="Solo .csv o .xlsx")
+
+    # --- Helper: elimina duplicados dentro del archivo por campo clave ---
+    def _dedupe_in_file(self, rows: List[Dict[str, Any]], key_field: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Mantiene la primera fila por cada valor no vacío de `key_field`.
+        Filas con `key_field` vacío no se deduplican entre sí.
+        Normaliza por strip().lower() para comparar.
+        """
+        seen: Set[str] = set()
+        out: List[Dict[str, Any]] = []
+        removed = 0
+        empty_keys = 0
+
+        for r in rows:
+            raw = r.get(key_field)
+            key = None if raw is None else str(raw).strip()
+            if not key:
+                empty_keys += 1
+                out.append(r)          # no dedupe cuando está vacío
+                continue
+            norm = key.lower()
+            if norm in seen:
+                removed += 1
+                continue
+            seen.add(norm)
+            out.append(r)
+
+        return out, {
+            "key_field": key_field,
+            "input_rows": len(rows),
+            "kept_rows": len(out),
+            "removed_duplicates": removed,
+            "rows_with_empty_key": empty_keys,
+        }

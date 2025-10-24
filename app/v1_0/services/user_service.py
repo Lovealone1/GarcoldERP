@@ -1,15 +1,29 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 
+from app.core.logger import logger
 from app.v1_0.repositories import UserRepository, RoleRepository
 from app.v1_0.entities import UserDTO
+from .supabase_admin import SupabaseAdminService
 class UserService:
-    def __init__(self, user_repository: UserRepository, role_repository: RoleRepository) -> None:
+    def __init__(self, user_repository: UserRepository, role_repository: RoleRepository,supabase_admin: SupabaseAdminService,) -> None:
         self.user_repo = user_repository
         self.role_repo = role_repository
+        self.supabase = supabase_admin
     async def set_role_by_sub(self, *, sub: str, role_id: int, db: AsyncSession) -> None:
         async with db.begin():
             await self.user_repo.set_role_by_sub(sub, role_id, db)
+
+        try:
+            role_code = await self.role_repo.get_code_by_id(role_id, db)
+            await self.supabase.set_role_metadata_dynamic(
+                user_id=sub,
+                db=db,
+                role_id=role_id,      
+                role_code=role_code,
+            )
+        except Exception as e:
+            logger.warning("supabase_role_sync_failed sub=%s role_id=%s err=%s", sub, role_id, e)
 
     async def upsert_basics_by_sub(
         self, *, sub: str, email: Optional[str], name: Optional[str], db: AsyncSession
@@ -67,3 +81,5 @@ class UserService:
     async def set_active_by_sub(self, *, sub: str, is_active: bool, db: AsyncSession) -> None:
         async with db.begin():
             await self.user_repo.set_active_by_sub(sub, is_active, db)
+            
+            

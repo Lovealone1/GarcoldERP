@@ -2,13 +2,15 @@ import httpx
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
 from app.core.settings import settings
-from app.v1_0.schemas import InviteUserIn, CreateUserIn, UpdateUserIn
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.v1_0.schemas import InviteUserIn, CreateUserIn, UpdateUserIn
+from app.v1_0.repositories import RoleRepository
 class SupabaseAdminService:
-    def __init__(self) -> None:
+    def __init__(self, role_repository: RoleRepository) -> None:
         self.base = settings.SUPABASE_URL.rstrip("/")
         self.headers = settings.SUPABASE_ADMIN_HEADERS
-
+        self.role_repository = role_repository
     @staticmethod
     def _normalize_user(u: Dict[str, Any]) -> Dict[str, Any]:
         uid = u.get("id")
@@ -42,7 +44,6 @@ class SupabaseAdminService:
 
         raise RuntimeError(f"supabase_admin_get_user_unexpected_type: {type(data).__name__}")
 
-    
     async def list_users(
     self, page: int = 1, per_page: int = 10, email: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -195,3 +196,55 @@ class SupabaseAdminService:
             if not isinstance(user, dict):
                 raise RuntimeError("supabase_admin_update_unexpected_payload: " + str(data)[:600])
             return self._normalize_user(user)
+        
+    async def set_role_metadata_dynamic(
+        self,
+        *,
+        user_id: str,                    
+        db: AsyncSession,
+        role_code: Optional[str] = None, 
+        role_id: Optional[int] = None,   
+    ) -> Dict[str, Any]:
+        """
+        Resuelve role_id <-> role_code desde la DB y sincroniza app_metadata en Supabase.
+        Si ambos son None, limpia los campos en app_metadata.
+        """
+        if not user_id:
+            raise RuntimeError("supabase_admin_set_role_invalid_id")
+
+        if role_code is not None or role_id is not None:
+            
+            roles = await self.role_repository.list_all(db) 
+            id_by_code = {r.code: r.id for r in roles}
+            code_by_id = {r.id: r.code for r in roles}
+
+            if role_code is not None and role_id is None:
+                if role_code not in id_by_code:
+                    raise ValueError(f"role_code_not_found:{role_code}")
+                role_id = id_by_code[role_code]
+
+            if role_id is not None and role_code is None:
+                if role_id not in code_by_id:
+                    raise ValueError(f"role_id_not_found:{role_id}")
+                role_code = code_by_id[role_id]
+
+            if role_id is not None and role_code is not None:
+                if code_by_id.get(role_id) != role_code:
+                    raise ValueError(f"role_mismatch:id={role_id} code={role_code}")
+
+        payload: Dict[str, Any] = {"app_metadata": {"role": role_code, "role_id": role_id}}
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.put(
+                f"{self.base}/auth/v1/admin/users/{user_id}",
+                headers=self.headers,
+                json=payload,
+            )
+        if r.status_code >= 300:
+            raise RuntimeError(f"supabase_admin_set_role_failed[{r.status_code}]: {r.text}")
+
+        data = r.json()
+        user = data.get("user") or data
+        if not isinstance(user, dict):
+            raise RuntimeError("supabase_admin_set_role_unexpected_payload")
+        return self._normalize_user(user)
