@@ -218,24 +218,28 @@ class APIContainer(containers.DeclarativeContainer):
         product_service=product_service,
         supplier_service=supplier_service
     )
+    supabase_admin_service = providers.Singleton(
+        SupabaseAdminService, 
+        role_repository = role_repository
+    )
     auth_service = providers.Singleton(
         AuthService,
         user_repository = user_repository,
         role_repository = role_repository,
-        permission_repository = permission_repository
+        permission_repository = permission_repository,
+        supabase_admin = supabase_admin_service
     )
     role_permission_service = providers.Singleton(
         RolePermissionService, 
         role_permission_repository = role_permission_repository, 
         role_repository = role_repository
     )
-    supabase_admin_service = providers.Singleton(
-        SupabaseAdminService
-    )
+    
     user_service = providers.Singleton(
         UserService,
         user_repository = user_repository,
-        role_repository = role_repository
+        role_repository = role_repository,
+        supabase_admin = supabase_admin_service
     )
     company_service = providers.Singleton(
         CompanyService, 
