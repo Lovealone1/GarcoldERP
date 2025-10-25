@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, Any
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,37 +27,46 @@ class AuthService:
         self.supabase = supabase_admin
         
     async def ensure_user(
-        self,
-        db: AsyncSession,
-        *,
-        sub: str,
-        email: Optional[str],
-        display_name: Optional[str],
+    self,
+    db: AsyncSession,
+    *,
+    sub: str,
+    email: Optional[str],
+    display_name: Optional[str],
     ):
         logger.debug("[AuthService] ensure_user sub=%s", sub)
-        try:
-            async with db.begin():
+
+        async def _upsert() -> tuple[Any, Optional[int]]:
+            u = await self.user_repository.get_by_sub(sub, db)
+            if u:
+                out = await self.user_repository.upsert_basics(u, email, display_name, db)
+                rid = out.role_id
+            else:
+                # lock a nivel transacción (no abrir begin aquí)
+                await self.user_repository.advisory_xact_lock(db)
+
                 u = await self.user_repository.get_by_sub(sub, db)
                 if u:
-                    out = await self.user_repository.upsert_basics(u, email, display_name, db)
+                    out = u
                     rid = out.role_id
                 else:
-                    await self.user_repository.advisory_xact_lock(db)
+                    total = await self.user_repository.count_all(db)
+                    default_role = "admin" if total == 0 else "user"
+                    rid = await self.role_repository.get_id_by_code(default_role, db)
+                    if not rid:
+                        raise ValueError(f"role_not_found:{default_role}")
 
-                    u = await self.user_repository.get_by_sub(sub, db)
-                    if u:
-                        out = u
-                        rid = out.role_id
-                    else:
-                        total = await self.user_repository.count_all(db)
-                        default_role = "admin" if total == 0 else "user"
-                        rid = await self.role_repository.get_id_by_code(default_role, db)
-                        if not rid:
-                            raise ValueError(f"role_not_found:{default_role}")
+                    out = await self.user_repository.create_with_role(
+                        sub=sub, email=email, name=display_name, role_id=rid, session=db
+                    )
+            return out, rid
 
-                        out = await self.user_repository.create_with_role(
-                            sub=sub, email=email, name=display_name, role_id=rid, session=db
-                        )
+        try:
+            if db.in_transaction():
+                out, rid = await _upsert()
+            else:
+                async with db.begin():
+                    out, rid = await _upsert()
 
             try:
                 sb = await self.supabase._get_user_raw(sub)
@@ -66,13 +75,10 @@ class AuthService:
                 sb_role_id = am.get("role_id")
 
                 role_code = await self.role_repository.get_code_by_id(rid, db) if rid else None
-
                 need_sync = (sb_role != role_code) or (sb_role_id != rid)
 
                 if need_sync:
-                    await self.supabase.set_role_metadata_dynamic(
-                        user_id=sub, db=db, role_id=rid  
-                    )
+                    await self.supabase.set_role_metadata_dynamic(user_id=sub, db=db, role_id=rid)
             except Exception as e:
                 logger.warning("[AuthService] supabase_role_sync_skip sub=%s err=%s", sub, e)
 
