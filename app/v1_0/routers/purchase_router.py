@@ -1,4 +1,5 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Body, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -24,18 +25,15 @@ async def finalize_purchase(
     supplier_id: int = Body(..., embed=True, description="Supplier ID"),
     bank_id: int = Body(..., embed=True, description="Bank ID"),
     status_id: int = Body(..., embed=True, description="Status ID"),
-    cart: List[Dict[str, Any]] = Body(
-        ..., embed=True, description="Purchase cart items"
-    ),
+    cart: List[Dict[str, Any]] = Body(..., embed=True, description="Purchase cart items"),
+    purchase_date: Optional[datetime] = Body(None, embed=True, description="Optional purchase datetime"),
     db: AsyncSession = Depends(get_db),
-    service: PurchaseService = Depends(
-        Provide[ApplicationContainer.api_container.purchase_service]
-    ),
+    service: PurchaseService = Depends(Provide[ApplicationContainer.api_container.purchase_service]),
 ):
     logger.info(
-        "[PurchaseRouter] finalize_purchase payload="
+        "[PurchaseRouter] finalize_purchase "
         f"supplier_id={supplier_id} bank_id={bank_id} status_id={status_id} "
-        f"cart_len={len(cart) if isinstance(cart, list) else 'N/A'}"
+        f"cart_len={len(cart) if isinstance(cart, list) else 'N/A'} purchase_date={purchase_date}"
     )
     try:
         return await service.finalize_purchase(
@@ -44,6 +42,7 @@ async def finalize_purchase(
             status_id=status_id,
             cart=cart,
             db=db,
+            purchase_date=purchase_date,
         )
     except HTTPException:
         raise

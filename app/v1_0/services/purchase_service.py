@@ -41,109 +41,97 @@ class PurchaseService:
         self._tx_type_pago_compra_id: Optional[int] = None
     
     async def finalize_purchase(
-        self,
-        supplier_id: int,
-        bank_id: int,
-        status_id: int,
-        cart: List[Dict[str, Any]],
-        db: AsyncSession,
-        ) -> PurchaseDTO:
-            """
-            Finalize a purchase from the frontend cart JSON and return a PurchaseDTO.
-            Preserves Spanish transaction description: 'Pago compra {purchase.id}'.
-            """
-            async with db.begin():
-                # 1) Read status to determine credit/cash
-                status_row = await self.status_repository.get_by_id(status_id, session=db)
-                is_credit = bool(status_row and status_row.name.lower() == "compra credito")
+    self,
+    supplier_id: int,
+    bank_id: int,
+    status_id: int,
+    cart: List[Dict[str, Any]],
+    db: AsyncSession,
+    purchase_date: Optional[datetime] = None,   
+    ) -> PurchaseDTO:
 
-                # 2) Create the purchase (totals updated later)
-                purchase_stub = PurchaseInsert(
-                    supplier_id=supplier_id,
-                    bank_id=bank_id,
-                    status_id=status_id,
-                    total=0.0,
-                    balance=0.0,
-                    purchase_date=datetime.now(),
-                )
-                purchase = await self.purchase_repository.create_purchase(purchase_stub, session=db)
+        async with db.begin():
+            status_row = await self.status_repository.get_by_id(status_id, session=db)
+            is_credit = bool(status_row and status_row.name.lower() == "compra credito")
 
-                # 3) Build normalized items WITH purchase_id
-                items: List[PurchaseItemDTO] = await self._build_items_from_cart(
-                    cart=cart, purchase_id=purchase.id
-                )
-
-                # 4) Validate products and compute total
-                total_amount = 0.0
-                for it in items:
-                    product = await self.product_repository.get_by_id(it.product_id, session=db)
-                    if not product:
-                        raise HTTPException(status_code=404, detail=f"Product {it.product_id} not found")
-                    total_amount += it.total
-
-                # 5) Insert items
-                rows = [
-                    PurchaseItemCreate(
-                        purchase_id=purchase.id,
-                        product_id=it.product_id,
-                        quantity=it.quantity,
-                        unit_price=it.unit_price,
-                    )
-                    for it in items
-                ]
-                await self.purchase_item_repository.bulk_insert_items(rows, session=db)
-
-                # 6) Update purchase totals
-                new_balance = total_amount if is_credit else 0.0
-                purchase.total = total_amount
-                purchase.balance = new_balance
-                db.add(purchase)
-
-                # 7) Increase inventory
-                for it in items:
-                    await self.product_repository.increase_quantity(it.product_id, it.quantity, session=db)
-
-                # 8) Adjust bank / transaction for cash purchases
-                if not is_credit:
-                    bank = await self.bank_repository.get_by_id(bank_id, session=db)
-                    if bank:
-                        new_bank_balance = float(bank.balance or 0.0) - total_amount
-                        await self.bank_repository.update_balance(bank_id, new_bank_balance, session=db)
-
-                        # Look up transaction type id by name to avoid hardcoding
-                        try:
-                            tx_type_id = await self.transaction_service.type_repo.get_id_by_name(
-                                "Pago compra", session=db
-                            )
-                        except Exception:
-                            tx_type_id = None
-
-                        await self.transaction_service.insert_transaction(
-                            TransactionCreate(
-                                bank_id=bank_id,
-                                amount=total_amount,
-                                type_id=tx_type_id,
-                                description=f"Pago compra {purchase.id}",
-                            ),
-                            db=db,
-                        )
-
-                # 9) Resolve display names for response
-                supplier = await self.supplier_repository.get_by_id(supplier_id, session=db)
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
-                status_name = status_row.name if status_row else "Desconocido"
-                supplier_name = supplier.name if supplier else "Desconocido"
-                bank_name = bank.name if bank else "Desconocido"
-
-            return PurchaseDTO(
-                id=purchase.id,
-                supplier=supplier_name,
-                bank=bank_name,
-                status=status_name,
-                total=total_amount,
-                balance=new_balance,
-                purchase_date=purchase.purchase_date,
+            purchase_stub = PurchaseInsert(
+                supplier_id=supplier_id,
+                bank_id=bank_id,
+                status_id=status_id,
+                total=0.0,
+                balance=0.0,
+                purchase_date=purchase_date or datetime.now(),  # ← usar fecha opcional
             )
+            purchase = await self.purchase_repository.create_purchase(purchase_stub, session=db)
+
+            items: List[PurchaseItemDTO] = await self._build_items_from_cart(
+                cart=cart, purchase_id=purchase.id
+            )
+
+            total_amount = 0.0
+            for it in items:
+                product = await self.product_repository.get_by_id(it.product_id, session=db)
+                if not product:
+                    raise HTTPException(status_code=404, detail=f"Product {it.product_id} not found")
+                total_amount += it.total
+
+            rows = [
+                PurchaseItemCreate(
+                    purchase_id=purchase.id,
+                    product_id=it.product_id,
+                    quantity=it.quantity,
+                    unit_price=it.unit_price,
+                )
+                for it in items
+            ]
+            await self.purchase_item_repository.bulk_insert_items(rows, session=db)
+
+            new_balance = total_amount if is_credit else 0.0
+            purchase.total = total_amount
+            purchase.balance = new_balance
+            db.add(purchase)
+
+            for it in items:
+                await self.product_repository.increase_quantity(it.product_id, it.quantity, session=db)
+
+            if not is_credit:
+                bank = await self.bank_repository.get_by_id(bank_id, session=db)
+                if bank:
+                    new_bank_balance = float(bank.balance or 0.0) - total_amount
+                    await self.bank_repository.update_balance(bank_id, new_bank_balance, session=db)
+
+                    try:
+                        tx_type_id = await self.transaction_service.type_repo.get_id_by_name(
+                            "Pago compra", session=db
+                        )
+                    except Exception:
+                        tx_type_id = None
+
+                    await self.transaction_service.insert_transaction(
+                        TransactionCreate(
+                            bank_id=bank_id,
+                            amount=total_amount,
+                            type_id=tx_type_id,
+                            description=f"Pago compra {purchase.id}",
+                        ),
+                        db=db,
+                    )
+
+            supplier = await self.supplier_repository.get_by_id(supplier_id, session=db)
+            bank = await self.bank_repository.get_by_id(bank_id, session=db)
+            status_name = status_row.name if status_row else "Desconocido"
+            supplier_name = supplier.name if supplier else "Desconocido"
+            bank_name = bank.name if bank else "Desconocido"
+
+        return PurchaseDTO(
+            id=purchase.id,
+            supplier=supplier_name,
+            bank=bank_name,
+            status=status_name,
+            total=total_amount,
+            balance=new_balance,
+            purchase_date=purchase.purchase_date,
+        )
     
     async def _build_items_from_cart(
     self,

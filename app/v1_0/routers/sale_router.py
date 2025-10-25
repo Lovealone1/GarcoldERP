@@ -1,4 +1,5 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -25,15 +26,17 @@ async def finalize_sale(
     bank_id: int = Body(..., embed=True),
     status_id: int = Body(..., embed=True),
     cart: List[Dict[str, Any]] = Body(..., embed=True, description="Cart items"),
+    sale_date: Optional[datetime] = Body(None, embed=True, description="Optional sale datetime"),
     db: AsyncSession = Depends(get_db),
     service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
 ):
     logger.info(
-        f"[SaleRouter] finalize_sale customer_id={customer_id} bank_id={bank_id} "
-        f"status_id={status_id} cart_len={len(cart) if cart else 0}"
+        "[SaleRouter] finalize_sale "
+        f"customer_id={customer_id} bank_id={bank_id} status_id={status_id} "
+        f"cart_len={len(cart) if cart else 0} sale_date={sale_date}"
     )
     try:
-        return await service.finalize_sale(customer_id, bank_id, status_id, cart, db)
+        return await service.finalize_sale(customer_id, bank_id, status_id, cart, db, sale_date=sale_date)
     except HTTPException:
         raise
     except Exception as e:

@@ -193,18 +193,14 @@ class SaleService:
         return profit_items
 
     async def finalize_sale(
-        self,
-        customer_id: int,
-        bank_id: int,
-        status_id: int,
-        cart: List[Dict[str, Any]],
-        db: AsyncSession,
+    self,
+    customer_id: int,
+    bank_id: int,
+    status_id: int,
+    cart: List[Dict[str, Any]],
+    db: AsyncSession,
+    sale_date: Optional[datetime] = None,  
     ) -> SaleDTO:
-        """
-        Finalizes a sale from the frontend cart.
-        Keeps 'venta credito' logic and Spanish transaction description.
-        Cognitive complexity kept low by delegating to helpers.
-        """
         async with db.begin():
             is_credit = await self._is_credit_status(status_id, db)
 
@@ -215,7 +211,7 @@ class SaleService:
                     total=0.0,
                     status_id=status_id,
                     remaining_balance=0.0,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=sale_date or datetime.now(),  
                 ),
                 session=db,
             )
@@ -251,6 +247,7 @@ class SaleService:
             bank = await self.bank_repository.get_by_id(bank_id, session=db)
             status_row = await self.status_repository.get_by_id(status_id, session=db)
             status_name = status_row.name if status_row else "Desconocido"
+
         return SaleDTO(
             id=sale.id,
             customer=customer.name if customer else "Desconocido",
