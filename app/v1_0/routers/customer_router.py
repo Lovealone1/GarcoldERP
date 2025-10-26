@@ -177,7 +177,7 @@ async def delete_customer(
 @router.post(
     "/by-id/{customer_id}/payments/simple",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Registrar pago independiente que descuenta solo el saldo del cliente",
+    summary="Register independent payment on the customers balance",
 )
 @inject
 async def create_simple_payment(
