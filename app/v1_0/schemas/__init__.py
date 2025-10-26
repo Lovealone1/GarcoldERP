@@ -1,5 +1,5 @@
 from .bank_schema import BankCreate, BankUpdateBalance
-from .customer_schema import CustomerCreate, CustomerUpdate
+from .customer_schema import CustomerCreate, CustomerUpdate, StandalonePaymentIn
 from .supplier_schema import SupplierCreate, SupplierUpdate
 from .expense_schema import ExpenseCreate
 from .investment_schema import InvestmentCreate, InvestmentUpdateBalance
@@ -49,7 +49,7 @@ from .auth_admin import (
     )
 __all__ = [
     "BankCreate", "BankUpdateBalance",
-    "CustomerCreate", "CustomerUpdate",
+    "CustomerCreate", "CustomerUpdate", "StandalonePaymentIn",
     "SupplierCreate", "SupplierUpdate",
     "ExpenseCreate",
     "InvestmentCreate", "InvestmentUpdateBalance",

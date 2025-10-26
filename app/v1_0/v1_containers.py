@@ -92,9 +92,17 @@ class APIContainer(containers.DeclarativeContainer):
         SupplierService,
         supplier_repository = supplier_repository
     )
+    transaction_service = providers.Singleton(
+        TransactionService,
+        transaction_repository = transaction_repository, 
+        transaction_type_repository = transaction_type_repository,
+        bank_repository = bank_repository
+    )
     customer_service = providers.Singleton(
         CustomerService, 
-        customer_repository = customer_repository
+        customer_repository = customer_repository,
+        bank_repository=bank_repository, 
+        transaction_service = transaction_service
     )
     product_service = providers.Singleton(
         ProductService,
@@ -111,12 +119,6 @@ class APIContainer(containers.DeclarativeContainer):
     status_service = providers.Singleton(
         StatusService,
         status_repository = status_repository
-    )
-    transaction_service = providers.Singleton(
-        TransactionService,
-        transaction_repository = transaction_repository, 
-        transaction_type_repository = transaction_type_repository,
-        bank_repository = bank_repository
     )
     expense_service = providers.Singleton(
         ExpenseService,
@@ -234,7 +236,6 @@ class APIContainer(containers.DeclarativeContainer):
         role_permission_repository = role_permission_repository, 
         role_repository = role_repository
     )
-    
     user_service = providers.Singleton(
         UserService,
         user_repository = user_repository,
