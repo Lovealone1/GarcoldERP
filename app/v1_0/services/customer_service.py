@@ -189,7 +189,7 @@ class CustomerService:
     async def register_simple_balance_payment(
     self, *, customer_id: int, bank_id: int, amount: float,
     description: str | None, db: AsyncSession
-    ) -> None:
+    ) -> bool:
         if amount <= 0:
             raise HTTPException(status_code=400, detail="Amount must be > 0")
 
@@ -208,9 +208,9 @@ class CustomerService:
         try:
             # 1) Descuenta saldo del cliente
             await self.customer_repository.update_balance(customer_id, current_balance - amount, db)
-            # 2) Aumenta saldo del banco
+            # 2) Aumenta saldo del banco  (usa el mismo parámetro `db`)
             await self.bank_repository.update_balance(bank_id, float(bank.balance or 0.0) + amount, session=db)
-            # 3) Transacción bancaria (Ingreso, manual, eliminable)
+            # 3) Transacción bancaria
             await self.transaction_service.insert_transaction(
                 TransactionCreate(
                     bank_id=bank_id,
@@ -221,8 +221,8 @@ class CustomerService:
                 ),
                 db=db,
             )
-
-            await db.commit()   # ← commit explícito
+            await db.commit()
+            return True
         except Exception:
-            await db.rollback() # ← rollback si algo falla
+            await db.rollback()
             raise

@@ -176,7 +176,7 @@ async def delete_customer(
 
 @router.post(
     "/by-id/{customer_id}/payments/simple",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=bool,  
     summary="Register independent payment on the customers balance",
 )
 @inject
@@ -193,13 +193,14 @@ async def create_simple_payment(
         f"bank_id={payload.bank_id} amount={payload.amount}"
     )
     try:
-        await service.register_simple_balance_payment(
+        ok = await service.register_simple_balance_payment(
             customer_id=customer_id,
             bank_id=payload.bank_id,
             amount=payload.amount,
             description=payload.description,
             db=db,
         )
+        return ok               
     except HTTPException:
         raise
     except Exception as e:
