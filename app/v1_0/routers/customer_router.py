@@ -7,7 +7,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
-from app.v1_0.schemas import CustomerCreate, CustomerUpdate
+from app.v1_0.schemas import CustomerCreate, CustomerUpdate, StandalonePaymentIn
 from app.v1_0.entities import CustomerDTO, CustomerPageDTO
 from app.v1_0.services import CustomerService
 
@@ -173,3 +173,36 @@ async def delete_customer(
         raise HTTPException(status_code=404, detail="Customer not found")
 
     return {"message": f"Customer with ID {customer_id} deleted successfully"}
+
+@router.post(
+    "/by-id/{customer_id}/payments/simple",
+    response_model=bool,  
+    summary="Register independent payment on the customers balance",
+)
+@inject
+async def create_simple_payment(
+    customer_id: int,
+    payload: StandalonePaymentIn,
+    db: AsyncSession = Depends(get_db),
+    service: CustomerService = Depends(
+        Provide[ApplicationContainer.api_container.customer_service]
+    ),
+):
+    logger.info(
+        f"[CustomerRouter] simple_payment id={customer_id} "
+        f"bank_id={payload.bank_id} amount={payload.amount}"
+    )
+    try:
+        ok = await service.register_simple_balance_payment(
+            customer_id=customer_id,
+            bank_id=payload.bank_id,
+            amount=payload.amount,
+            description=payload.description,
+            db=db,
+        )
+        return ok               
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CustomerRouter] simple_payment error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to register payment")

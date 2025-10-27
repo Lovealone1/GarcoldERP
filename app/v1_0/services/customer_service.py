@@ -3,14 +3,20 @@ from math import ceil
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.schemas import CustomerCreate, CustomerUpdate
-from app.v1_0.repositories import CustomerRepository
+from app.v1_0.schemas import CustomerCreate, CustomerUpdate, TransactionCreate
+from app.v1_0.repositories import CustomerRepository, BankRepository
+from .transaction_service import TransactionService
 from app.v1_0.entities import CustomerDTO, CustomerPageDTO
 from app.core.logger import logger
 
 class CustomerService:
-    def __init__(self, customer_repository: CustomerRepository) -> None:
+    def __init__(self, 
+            customer_repository: CustomerRepository, 
+            bank_repository: BankRepository,
+            transaction_service:TransactionService ) -> None:
         self.customer_repository = customer_repository
+        self.bank_repository = bank_repository
+        self.transaction_service = transaction_service
         self.PAGE_SIZE = 10
 
     async def _require(self, customer_id: int, db: AsyncSession):
@@ -179,3 +185,44 @@ class CustomerService:
         except Exception as e:
             logger.error(f"[CustomerService] Delete failed ID={customer_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to delete customer")
+
+    async def register_simple_balance_payment(
+    self, *, customer_id: int, bank_id: int, amount: float,
+    description: str | None, db: AsyncSession
+    ) -> bool:
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Amount must be > 0")
+
+        customer = await self.customer_repository.get_by_id(customer_id, session=db)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        bank = await self.bank_repository.get_by_id(bank_id, session=db)
+        if not bank:
+            raise HTTPException(status_code=404, detail="Bank not found")
+
+        current_balance = float(customer.balance or 0.0)
+        if amount > current_balance:
+            raise HTTPException(status_code=422, detail=f"Exceeds balance ({current_balance:.2f})")
+
+        try:
+            # 1) Descuenta saldo del cliente
+            await self.customer_repository.update_balance(customer_id, current_balance - amount, db)
+            # 2) Aumenta saldo del banco  (usa el mismo parámetro `db`)
+            await self.bank_repository.update_balance(bank_id, float(bank.balance or 0.0) + amount, session=db)
+            # 3) Transacción bancaria
+            await self.transaction_service.insert_transaction(
+                TransactionCreate(
+                    bank_id=bank_id,
+                    amount=amount,
+                    type_id=4,
+                    description=description or f"Abono saldo {customer.name}",
+                    is_auto=False,
+                ),
+                db=db,
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise

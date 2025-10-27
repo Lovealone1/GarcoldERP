@@ -33,3 +33,8 @@ class CustomerUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=30)
     address: Optional[str] = Field(None, max_length=200)
     city: Optional[str] = Field(None, max_length=80)
+    
+class StandalonePaymentIn(BaseModel):
+    bank_id: int = Field(..., gt=0)
+    amount: float = Field(..., gt=0)
+    description: str | None = None
