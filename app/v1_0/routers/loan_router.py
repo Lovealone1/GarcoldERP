@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Union, Any
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -7,7 +7,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
-from app.v1_0.schemas import LoanCreate
+from app.v1_0.schemas import LoanCreate, LoanApplyPaymentIn
 from app.v1_0.entities import LoanDTO, LoanPageDTO
 from app.v1_0.services import LoanService
 
@@ -155,3 +155,32 @@ async def delete_loan(
     if not ok:
         raise HTTPException(status_code=404, detail="Loan not found")
     return {"message": f"Loan with ID {loan_id} deleted successfully"}
+
+@router.post(
+    "/apply-payment",
+    response_model=Union[LoanDTO, Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="Apply a payment into loan and discount from the bank",
+)
+@inject
+async def apply_payment(
+    payload: LoanApplyPaymentIn,
+    db: AsyncSession = Depends(get_db),
+    service: LoanService = Depends(
+        Provide[ApplicationContainer.api_container.loan_service]
+    ),
+):
+    logger.info(
+        "[LoanRouter] apply_payment loan_id=%s amount=%s bank_id=%s",
+        payload.loan_id, payload.amount, payload.bank_id
+    )
+    try:
+        res = await service.apply_payment(payload, db)
+        if res is None:
+            return {"deleted": True, "loan_id": payload.loan_id}
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[LoanRouter] apply_payment error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to apply loan payment")

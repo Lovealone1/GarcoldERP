@@ -1,4 +1,5 @@
 from math import ceil
+from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,21 +41,36 @@ class TransactionService:
             raise
 
     async def create(self, payload: TransactionCreate, db: AsyncSession) -> TransactionDTO:
-        """
-        Create a bank transaction.
-        Validates bank existence (and type if provided), then persists.
-        """
+        if payload.type_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type_id is required.")
+
+        amount = Decimal(str(payload.amount))
+
         async with db.begin():
             bank = await self.bank_repo.get_by_id(payload.bank_id, session=db)
             if not bank:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank not found.")
 
-            if payload.type_id is not None:
-                tx_type = await self.type_repo.get_by_id(payload.type_id, session=db)
-                if not tx_type:
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction type not found.")
+            tx_type = await self.type_repo.get_by_id(payload.type_id, session=db)
+            if not tx_type:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction type not found.")
 
+            kind = (tx_type.name or "").strip().lower()
+            current_balance = Decimal(str(bank.balance or 0))
 
+            if kind == "ingreso":
+                new_balance = current_balance + amount
+            elif kind == "retiro":
+                if amount > current_balance:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient funds.")
+                new_balance = current_balance - amount
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Unsupported transaction type. Use 'Ingreso' or 'Retiro'."
+                )
+
+            bank.balance = float(new_balance)  
             tx = await self.tx_repo.create_transaction(payload, session=db)
 
         return TransactionDTO(

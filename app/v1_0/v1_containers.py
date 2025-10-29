@@ -110,11 +110,17 @@ class APIContainer(containers.DeclarativeContainer):
     )
     loan_service = providers.Singleton(
         LoanService,
-        loan_repository = loan_repository
+        loan_repository = loan_repository, 
+        bank_repository = bank_repository, 
+        transaction_type_repository = transaction_type_repository, 
+        transaction_service = transaction_service
     )
     investment_service = providers.Singleton(
         InvestmentService, 
-        investment_repository = investment_repository
+        investment_repository = investment_repository, 
+        transaction_type_repository = transaction_type_repository, 
+        transaction_service = transaction_service, 
+        bank_repository = bank_repository
     )
     status_service = providers.Singleton(
         StatusService,

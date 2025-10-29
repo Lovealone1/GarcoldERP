@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Any , Union
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -7,7 +7,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
-from app.v1_0.schemas import InvestmentCreate
+from app.v1_0.schemas import InvestmentCreate, InvestmentAddBalanceIn, InvestmentWithdrawIn
 from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
 from app.v1_0.services import InvestmentService
 
@@ -155,3 +155,58 @@ async def delete_investment(
     if not ok:
         raise HTTPException(status_code=404, detail="Investment not found")
     return {"message": f"Investment with ID {investment_id} deleted successfully"}
+
+@router.post(
+    "/balance/add",
+    status_code=status.HTTP_200_OK,
+    response_model=InvestmentDTO,
+    summary="Add values to investment as interst or topup",
+)
+@inject
+async def add_investment_balance(
+    payload: InvestmentAddBalanceIn,
+    db: AsyncSession = Depends(get_db),
+    service: InvestmentService = Depends(
+        Provide[ApplicationContainer.api_container.investment_service]
+    ),
+):
+    try:
+        return await service.add_balance(payload=payload, db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[InvestmentRouter] add_balance error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add balance")
+    
+@router.post(
+    "/withdraw",
+    response_model=Union[InvestmentDTO, Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="Withdraw values partial or full, if balance is 0 the investment is eliminated",
+)
+@inject
+async def withdraw_investment(
+    payload: InvestmentWithdrawIn,
+    db: AsyncSession = Depends(get_db),
+    service: InvestmentService = Depends(
+        Provide[ApplicationContainer.api_container.investment_service]
+    ),
+):
+    logger.info(
+        "[InvestmentRouter] withdraw id=%s kind=%s amount=%s dest_bank=%s",
+        payload.investment_id,
+        payload.kind,
+        getattr(payload, "amount", None),
+        getattr(payload, "destination_bank_id", None),
+    )
+    try:
+        res = await service.withdraw(payload, db)
+        if res is None:
+            # liquidación total
+            return {"deleted": True, "investment_id": payload.investment_id}
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[InvestmentRouter] withdraw error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to withdraw from investment")
