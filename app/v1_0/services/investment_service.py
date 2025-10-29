@@ -2,15 +2,21 @@ from typing import List
 from math import ceil
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from app.core.logger import logger
-from app.v1_0.repositories import InvestmentRepository
-from app.v1_0.schemas import InvestmentCreate
+from app.v1_0.repositories import InvestmentRepository, TransactionTypeRepository
+from app.v1_0.schemas import InvestmentCreate, TransactionCreate
 from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
-
+from .transaction_service import TransactionService
 class InvestmentService:
-    def __init__(self, investment_repository: InvestmentRepository) -> None:
+    def __init__(self, 
+        investment_repository: InvestmentRepository,
+        transaction_type_repository: TransactionTypeRepository,
+        transaction_service: TransactionService) -> None:
         self.investment_repository = investment_repository
+        self.transaction_type_repository = transaction_type_repository
+        self.transaction_service = transaction_service
         self.PAGE_SIZE = 10
 
     async def _require(self, investment_id: int, db: AsyncSession):
@@ -119,6 +125,41 @@ class InvestmentService:
         except Exception as e:
             logger.error(f"[InvestmentService] Update balance failed ID={investment_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to update investment balance")
+        
+    async def add_balance(self, investment_id: int, amount: float, db: AsyncSession) -> InvestmentDTO:
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="amount must be > 0")
+
+        async with db.begin():
+            inv_row = await self.investment_repository.get_by_id(investment_id, db)
+            if not inv_row:
+                raise HTTPException(status_code=404, detail="Investment not found.")
+            if not inv_row.bank_id:
+                raise HTTPException(status_code=400, detail="Investment has no bank bound.")
+
+            inv = await self.investment_repository.increment_balance(investment_id, amount, db)
+            if not inv:
+                raise HTTPException(status_code=404, detail="Investment not found after update.")
+
+            t = await self.transaction_type_repository.get_by_name("Interes Inversion", session=db)
+            type_id = t.id if t else None
+
+            payload = TransactionCreate(
+                bank_id=inv_row.bank_id,
+                amount=amount,
+                type_id=type_id,
+                description=f"Interes Inversion {inv_row.name}",
+                is_auto=True,
+                created_at=datetime.now(),
+            )
+            await self.transaction_service.insert_transaction(payload, db)
+
+        return InvestmentDTO(
+            id=inv.id,
+            name=inv.name,
+            balance=inv.balance,           
+            maturity_date=inv.maturity_date
+        )
 
     async def delete(self, investment_id: int, db: AsyncSession) -> bool:
         logger.warning(f"[InvestmentService] Delete investment ID={investment_id}")

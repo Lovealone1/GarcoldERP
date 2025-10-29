@@ -114,7 +114,9 @@ class APIContainer(containers.DeclarativeContainer):
     )
     investment_service = providers.Singleton(
         InvestmentService, 
-        investment_repository = investment_repository
+        investment_repository = investment_repository, 
+        transaction_type_repository = transaction_type_repository, 
+        transaction_service = transaction_service
     )
     status_service = providers.Singleton(
         StatusService,

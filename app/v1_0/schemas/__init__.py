@@ -2,7 +2,7 @@ from .bank_schema import BankCreate, BankUpdateBalance
 from .customer_schema import CustomerCreate, CustomerUpdate, StandalonePaymentIn
 from .supplier_schema import SupplierCreate, SupplierUpdate
 from .expense_schema import ExpenseCreate
-from .investment_schema import InvestmentCreate, InvestmentUpdateBalance
+from .investment_schema import InvestmentCreate, InvestmentUpdateBalance, InvestmentAddBalanceIn
 from .loan_schema import LoanCreate, LoanUpdateAmount
 from .payment_schema import PaymentCreate
 from .product_schema import ProductUpsert, ProductRangeQuery
@@ -52,7 +52,7 @@ __all__ = [
     "CustomerCreate", "CustomerUpdate", "StandalonePaymentIn",
     "SupplierCreate", "SupplierUpdate",
     "ExpenseCreate",
-    "InvestmentCreate", "InvestmentUpdateBalance",
+    "InvestmentCreate", "InvestmentUpdateBalance", "InvestmentAddBalanceIn",
     "LoanCreate", "LoanUpdateAmount",
     "PaymentCreate",
     "ProductUpsert", "ProductRangeQuery",

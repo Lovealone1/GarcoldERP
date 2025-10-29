@@ -7,7 +7,7 @@ from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
-from app.v1_0.schemas import InvestmentCreate
+from app.v1_0.schemas import InvestmentCreate, InvestmentAddBalanceIn
 from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
 from app.v1_0.services import InvestmentService
 
@@ -155,3 +155,29 @@ async def delete_investment(
     if not ok:
         raise HTTPException(status_code=404, detail="Investment not found")
     return {"message": f"Investment with ID {investment_id} deleted successfully"}
+
+@router.post(
+    "/balance/add",
+    status_code=status.HTTP_200_OK,
+    response_model=InvestmentDTO,
+    summary="Incrementa el saldo de una inversión y registra la transacción automática",
+)
+@inject
+async def add_investment_balance(
+    payload: InvestmentAddBalanceIn,
+    db: AsyncSession = Depends(get_db),
+    service: InvestmentService = Depends(
+        Provide[ApplicationContainer.api_container.investment_service]
+    ),
+):
+    try:
+        return await service.add_balance(
+            investment_id=payload.investment_id,
+            amount=payload.amount,
+            db=db,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[InvestmentRouter] add_balance error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add balance")

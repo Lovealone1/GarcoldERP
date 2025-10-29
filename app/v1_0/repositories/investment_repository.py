@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
+from sqlalchemy.sql import literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Investment
@@ -21,6 +22,7 @@ class InvestmentRepository(BaseRepository[Investment]):
         entity = Investment(
             name=payload.name,
             balance=payload.balance,
+            bank_id=payload.bank_id, 
             maturity_date=payload.maturity_date,
         )
         await self.add(entity, session)
@@ -79,6 +81,16 @@ class InvestmentRepository(BaseRepository[Investment]):
         items: List[Investment] = list(result.scalars().all())
         total = await session.scalar(select(func.count(Investment.id))) or 0
         return items, int(total or 0)
+
+    async def increment_balance(self, investment_id: int, amount: float, session: AsyncSession):
+        stmt = (
+            update(Investment)
+            .where(Investment.id == investment_id)
+            .values(balance=Investment.balance + literal(amount))
+            .returning(Investment)
+        )
+        res = await session.execute(stmt)
+        return res.scalar_one_or_none()
 
     async def list_all(
         self,
