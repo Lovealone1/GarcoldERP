@@ -50,7 +50,7 @@ class InvestmentService:
 
                     tx = TransactionCreate(
                         bank_id=payload.bank_id,
-                        amount=-initial, 
+                        amount=initial, 
                         type_id=type_id,
                         description=f"Aporte inicial a inversión {i.name}",
                         is_auto=True,
