@@ -20,3 +20,17 @@ class LoanUpdateAmount(BaseModel):
             "example": {"amount": 7500.0}
         }
     }
+
+class LoanApplyPaymentIn(BaseModel):
+    loan_id: int = Field(..., gt=0)
+    amount: float = Field(..., gt=0)
+    bank_id: int = Field(..., gt=0)
+    description: str | None = None
+
+    model_config = {
+        "json_schema_extra":{
+            "examples": [
+                {"loan_id": 12, "amount": 250000, "bank_id": 7, "description": "Pago cuota octubre"}
+            ]
+        }
+    }

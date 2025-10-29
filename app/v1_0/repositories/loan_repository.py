@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update,literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Loan
@@ -72,3 +72,37 @@ class LoanRepository(BaseRepository[Loan]):
         stmt = select(Loan).order_by(Loan.id.asc())
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    async def apply_payment(
+        self,
+        loan_id: int,
+        amount: float,
+        session: AsyncSession,
+        ) -> Tuple[Optional[Loan], bool]:
+            """
+            Aplica un pago al crédito.
+            - Disminuye `amount` si hay fondos suficientes.
+            - Si el monto restante queda en 0, elimina el crédito.
+            Retorna (loan_actualizado | None, deleted_flag).
+            """
+            if amount <= 0:
+                raise ValueError("amount_must_be_positive")
+
+            stmt = (
+                update(Loan)
+                .where(Loan.id == loan_id)
+                .where(func.coalesce(Loan.amount, 0) >= amount)  
+                .values(amount=func.coalesce(Loan.amount, 0) - literal(amount))
+                .returning(Loan)  
+            )
+            res = await session.execute(stmt)
+            loan: Optional[Loan] = res.scalar_one_or_none()
+
+            if loan is None:
+                raise ValueError("insufficient_amount_or_not_found")
+
+            if float(loan.amount or 0.0) == 0.0:
+                await self.delete(loan, session)
+                return None, True
+
+            return loan, False

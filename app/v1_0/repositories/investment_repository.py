@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import select, func, update
 from sqlalchemy.sql import literal
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from app.v1_0.models import Investment
 from app.v1_0.schemas import InvestmentCreate
@@ -91,6 +92,31 @@ class InvestmentRepository(BaseRepository[Investment]):
         )
         res = await session.execute(stmt)
         return res.scalar_one_or_none()
+    
+    async def decrease_balance(
+    self,
+    investment_id: int,
+    amount: float,
+    session: AsyncSession,
+    ) -> Optional[Investment]:
+        if amount <= 0:
+            raise ValueError("amount_must_be_positive")
+
+        stmt = (
+            update(Investment)
+            .where(Investment.id == investment_id)
+            .where(func.coalesce(Investment.balance, 0) >= amount)  # evita saldo negativo
+            .values(
+                balance=func.coalesce(Investment.balance, 0) - amount
+            )
+            .returning(Investment)
+        )
+        res = await session.execute(stmt)
+        inv = res.scalar_one_or_none()
+        if inv is None:
+            # no existe o fondos insuficientes
+            raise ValueError("insufficient_balance_or_not_found")
+        return inv
 
     async def list_all(
         self,
