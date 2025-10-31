@@ -7,7 +7,11 @@ WEB_CONCURRENCY = "2"
 PLAYWRIGHT_BROWSERS_PATH = "/ms-playwright"
 
 [phases.setup]
-nixPkgs = ["python312", "pipx", "file"]
+nixPkgs = [
+  "python312","pipx","file","chromium",
+  "freetype","fontconfig","nss","nspr","gtk3","pango","cups","libdrm","mesa","dbus",
+  "xorg.libX11","xorg.libXcomposite","xorg.libXdamage","xorg.libXfixes","xorg.libXrandr","xorg.libxcb"
+]
 cmds = ["pipx install poetry"]
 
 [phases.install]
