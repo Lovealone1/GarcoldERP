@@ -25,7 +25,11 @@ class CustomerRepository(BaseRepository[Customer]):
 
     async def get_customer_by_id(self, customer_id: int, session: AsyncSession) -> Optional[Customer]:
         return await super().get_by_id(customer_id, session)
-
+    
+    async def get_by_name(self, name: str, session: AsyncSession) -> Optional[Customer]:
+        stmt = select(Customer).where(func.trim(func.lower(Customer.name)) == func.trim(func.lower(name)))
+        return (await session.execute(stmt)).scalars().first()
+    
     async def update_customer(self, customer_id: int, payload: CustomerUpdate, session: AsyncSession) -> Optional[Customer]:
         c = await self.get_customer_by_id(customer_id, session)
         if not c:
