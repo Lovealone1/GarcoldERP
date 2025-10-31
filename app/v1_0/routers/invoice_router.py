@@ -56,7 +56,6 @@ async def get_invoice_pdf(
     sale_id: int = Path(..., ge=1),
     company_id: int | None = Query(None, ge=1),
     pdf_renderer: PdfRenderer = Depends(Provide[ApplicationContainer.api_container.pdf_renderer]),
-    db: AsyncSession = Depends(get_db),  # reservado si necesitas validar existencia
 ):
     try:
         extra_q = _merge_query("print=1", company_id)

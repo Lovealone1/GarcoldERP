@@ -215,7 +215,7 @@ class CustomerService:
                 TransactionCreate(
                     bank_id=bank_id,
                     amount=amount,
-                    type_id=4,
+                    type_id=2,
                     description=description or f"Abono saldo {customer.name}",
                     is_auto=False,
                 ),

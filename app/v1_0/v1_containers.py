@@ -96,7 +96,8 @@ class APIContainer(containers.DeclarativeContainer):
         TransactionService,
         transaction_repository = transaction_repository, 
         transaction_type_repository = transaction_type_repository,
-        bank_repository = bank_repository
+        bank_repository = bank_repository,
+        customer_repository = customer_repository
     )
     customer_service = providers.Singleton(
         CustomerService, 
