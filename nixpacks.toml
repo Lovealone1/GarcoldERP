@@ -8,15 +8,34 @@ PLAYWRIGHT_BROWSERS_PATH = "/ms-playwright"
 
 [phases.setup]
 nixPkgs = [
-  "python312","pipx","file","chromium",
-  "freetype","fontconfig","nss","nspr","gtk3","pango","cups","libdrm","mesa","dbus",
-  "xorg.libX11","xorg.libXcomposite","xorg.libXdamage","xorg.libXfixes","xorg.libXrandr","xorg.libxcb"
+  "python312","pipx","file",
+  "chromium",
+  "glib",            # libglib-2.0.so.0, libgobject-2.0.so.0, libgio-2.0.so.0
+  "nspr",            # libnspr4.so
+  "nss",             # libnss3.so, libnssutil3.so, libsmime3.so
+  "dbus",            # libdbus-1.so.3
+  "atk",             # libatk-1.0.so.0
+  "at-spi2-core",    # libatspi.so.0
+  "at-spi2-atk",     # libatk-bridge-2.0.so.0
+  "cups",            # libcups.so.2
+  "expat",           # libexpat.so.1
+  "libxkbcommon",    # libxkbcommon.so.0
+  "xorg.libX11", "xorg.libXext", "xorg.libXfixes", "xorg.libXcomposite",
+  "xorg.libXdamage", "xorg.libXrandr", "xorg.libxcb", # libX*.so.*, libxcb.so.1
+  "mesa", "libdrm",  # libgbm.so.1
+  "cairo",           # libcairo.so.2
+  "pango",           # libpango-1.0.so.0
+  "alsa-lib",        # libasound.so.2
+  "gtk3",            # integra varias GTK deps
+  "fontconfig","freetype","gdk-pixbuf"
 ]
 cmds = ["pipx install poetry"]
 
 [phases.install]
-cmds = ["poetry install --no-root --only main"]
+cmds = [
+  "poetry install --no-root --only main"
+]
 
 [start]
+# Si prefieres seguir descargando el bundle de Playwright en /ms-playwright:
 cmd = "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright poetry run python -m playwright install chromium && poetry run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"
-
