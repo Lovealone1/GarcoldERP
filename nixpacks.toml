@@ -4,16 +4,15 @@ PYTHONUNBUFFERED = "1"
 POETRY_VIRTUALENVS_IN_PROJECT = "true"
 POETRY_NO_INTERACTION = "1"
 WEB_CONCURRENCY = "2"
-PLAYWRIGHT_BROWSERS_PATH = "/usr/lib/playwright"
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+PLAYWRIGHT_BROWSERS_PATH = "/ms-playwright"
 
 [phases.setup]
-nixPkgs = ["python312", "pipx", "file", "playwright-driver"]
+nixPkgs = ["python312", "pipx", "file"]
 cmds = ["pipx install poetry"]
 
 [phases.install]
 cmds = ["poetry install --no-root --only main"]
 
 [start]
-cmd = "poetry run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"
+cmd = "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright poetry run python -m playwright install chromium && poetry run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"
 
