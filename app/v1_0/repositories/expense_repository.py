@@ -54,7 +54,7 @@ class ExpenseRepository(BaseRepository[Expense]):
         """
         stmt = (
             select(Expense)
-            .order_by(Expense.id.asc())
+            .order_by(Expense.id.desc())
             .offset(offset)
             .limit(limit)
         )
