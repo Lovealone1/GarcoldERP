@@ -55,7 +55,7 @@ class SaleService:
         self.bank_repository = bank_repository
         self.sale_payment_repository = sale_payment_repository
         self.transaction_service = transaction_service
-        self.PAGE_SIZE = 13
+        self.PAGE_SIZE = 8
         self._tx_type_pago_venta_id: Optional[int] = None
 
     async def _get_pago_venta_type_id(self, db: AsyncSession) -> Optional[int]:
