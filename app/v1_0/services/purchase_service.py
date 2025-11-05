@@ -37,7 +37,7 @@ class PurchaseService:
         self.bank_repository = bank_repository
         self.purchase_payment_repository = purchase_payment_repository
         self.transaction_service = transaction_service
-        self.PAGE_SIZE = 13
+        self.PAGE_SIZE = 8
         self._tx_type_pago_compra_id: Optional[int] = None
     
     async def finalize_purchase(
