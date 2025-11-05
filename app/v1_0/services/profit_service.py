@@ -29,7 +29,7 @@ class ProfitService:
         self.profit_repository = profit_repository
         self.profit_item_repository = profit_item_repository
         self.product_repository = product_repository
-        self.PAGE_SIZE = 12
+        self.PAGE_SIZE = 16
     async def list_profits(self, page: int, db: AsyncSession) -> ProfitPageDTO:
         """
         Paginated list of profits ordered by id asc.

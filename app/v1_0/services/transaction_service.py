@@ -28,7 +28,7 @@ class TransactionService:
         self.type_repo = transaction_type_repository
         self.bank_repo = bank_repository
         self.customer_repository = customer_repository
-        self.PAGE_SIZE = 10
+        self.PAGE_SIZE = 8
 
     async def insert_transaction(
         self,
