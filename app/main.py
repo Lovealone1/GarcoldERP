@@ -1,4 +1,3 @@
-# app/main.py
 from contextlib import asynccontextmanager
 from inspect import isawaitable
 from typing import cast
