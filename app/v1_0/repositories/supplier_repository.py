@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.models import Supplier
 from app.v1_0.schemas import SupplierCreate
 from .base_repository import BaseRepository
+from .paginated import list_paginated_keyset
 
 class SupplierRepository(BaseRepository[Supplier]):
     def __init__(self) -> None:
@@ -70,19 +71,21 @@ class SupplierRepository(BaseRepository[Supplier]):
         return True
 
     async def list_paginated(
-    self, offset: int, limit: int, session: AsyncSession
-    ) -> Tuple[List[Supplier], int]:
-        stmt = (
-            select(Supplier)
-            .order_by(Supplier.id.asc())
-            .offset(offset)
-            .limit(limit)
+    self, *, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[list[Supplier], int, bool]:
+        items, total, has_next = await list_paginated_keyset(
+            session=session,
+            model=Supplier,
+            created_col=Supplier.created_at,
+            id_col=Supplier.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(),  
+            eager=(),
+            pin_enabled=False,
+            pin_predicate=None,
         )
-
-        result = await session.execute(stmt)
-        items: List[Supplier] = list(result.scalars().all())   
-        total: int = (await session.scalar(select(func.count(Supplier.id)))) or 0
-        return items, total
+        return items, total, has_next
 
     async def list_suppliers(
         self,

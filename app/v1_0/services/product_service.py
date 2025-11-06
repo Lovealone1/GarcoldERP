@@ -118,6 +118,7 @@ class ProductService:
             has_next=page < total_pages,
             has_prev=page > 1,
         )
+        
     async def update(self, product_id: int, payload: ProductUpsert, db: AsyncSession) -> ProductDTO:
         logger.info(f"[ProductService] Update product ID={product_id}")
         try:
