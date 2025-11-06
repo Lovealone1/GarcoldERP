@@ -8,6 +8,7 @@ from app.v1_0.models import Product, SaleItem, Sale
 from app.v1_0.schemas import ProductUpsert
 from app.v1_0.entities import SaleProductsDTO  
 from .base_repository import BaseRepository
+from .paginated import list_paginated_keyset
 
 class ProductRepository(BaseRepository[Product]):
     def __init__(self) -> None:
@@ -105,18 +106,21 @@ class ProductRepository(BaseRepository[Product]):
         return entity
 
     async def list_paginated(
-    self, offset: int, limit: int, session: AsyncSession
-    ) -> Tuple[List[Product], int]:
-        stmt = (
-            select(Product)
-            .order_by(Product.id.asc())
-            .offset(offset)
-            .limit(limit)
+        self, *, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[List[Product], int, bool]:
+        items, total, has_next = await list_paginated_keyset(
+            session=session,
+            model=Product,
+            created_col=Product.created_at,  
+            id_col=Product.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(),                  
+            eager=(),                       
+            pin_enabled=False,               
+            pin_predicate=None,
         )
-        result = await session.execute(stmt)
-        items: List[Product] = list(result.scalars().all())
-        total: int = (await session.scalar(select(func.count(Product.id)))) or 0
-        return items, int(total or 0)
+        return items, total, has_next
 
     async def list_products(self, session: AsyncSession) -> List[Product]:
         stmt = (
@@ -126,7 +130,6 @@ class ProductRepository(BaseRepository[Product]):
         )
         result = await session.execute(stmt)
         return list(result.scalars().all())
-
 
     async def top_products_by_quantity(
         self,

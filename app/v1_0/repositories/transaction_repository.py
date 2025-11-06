@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from app.v1_0.models import Transaction
 from app.v1_0.schemas import TransactionCreate
 from .base_repository import BaseRepository
-
+from .paginated import list_paginated_keyset
 class TransactionRepository(BaseRepository[Transaction]):
     def __init__(self) -> None:
         super().__init__(Transaction)
@@ -67,73 +67,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         res = await session.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def list_paginated(self, offset: int, limit: int, session: AsyncSession):
-        pin_exists = bool(await session.scalar(
-            select(func.count()).where(Transaction.id == -1)
-        ))
-        eff_offset = max(offset - (1 if pin_exists else 0), 0)
-
-        total_rows = await session.scalar(
-            select(func.count(Transaction.id)).where(Transaction.id != -1)
-        ) or 0
-
-        take = limit + 1
-
-        if eff_offset == 0:
-            rows = (
-                await session.execute(
-                    select(Transaction)
-                    .options(selectinload(Transaction.bank), selectinload(Transaction.type))
-                    .where(Transaction.id != -1)
-                    .order_by(desc(Transaction.created_at), Transaction.id.desc())
-                    .limit(take)
-                )
-            ).scalars().all()
-
-        else:
-            anchor = (
-                await session.execute(
-                    select(Transaction.created_at, Transaction.id)
-                    .where(Transaction.id != -1)
-                    .order_by(desc(Transaction.created_at), Transaction.id.desc())
-                    .offset(eff_offset - 1).limit(1)
-                )
-            ).first()
-
-            if not anchor:
-                rows = []
-            else:
-                ac, aid = anchor
-                rows = (
-                    await session.execute(
-                        select(Transaction)
-                        .options(selectinload(Transaction.bank), selectinload(Transaction.type))
-                        .where(Transaction.id != -1)
-                        .where(tuple_(Transaction.created_at, Transaction.id) < tuple_(ac, aid))  
-                        .order_by(desc(Transaction.created_at), Transaction.id.desc())
-                        .limit(take)
-                    )
-                ).scalars().all()
-
-        items: list[Transaction] = []
-        if offset == 0 and pin_exists:
-            pin = (
-                await session.execute(
-                    select(Transaction)
-                    .options(selectinload(Transaction.bank), selectinload(Transaction.type))
-                    .where(Transaction.id == -1).limit(1)
-                )
-            ).scalars().first()
-            if pin:
-                items.append(pin)
-
-        remaining_core = max(total_rows - eff_offset, 0)
-        visible_core = min(limit, remaining_core)  
-
-        has_next = eff_offset + visible_core < total_rows
-
-        page_rows = rows[:visible_core] if eff_offset == 0 else rows[:visible_core]
-        items.extend(page_rows)
-
-        total = total_rows + (1 if pin_exists else 0)
-        return items, total, has_next
+    async def list_paginated(self, *, session, offset: int, limit: int):
+        return await list_paginated_keyset(
+            session=session,
+            model=Transaction,
+            created_col=Transaction.created_at,
+            id_col=Transaction.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(Transaction.id != -1,),
+            eager=(selectinload(Transaction.bank), selectinload(Transaction.type)),
+            pin_enabled=True,
+            pin_predicate=(Transaction.id == -1),  
+        )

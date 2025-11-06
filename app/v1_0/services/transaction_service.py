@@ -287,7 +287,6 @@ class TransactionService:
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
-        # Soporta que el repo devuelva (items, total) o (items, total, algo_mas)
         items, total, *rest = await self.tx_repo.list_paginated(
             offset=offset, limit=page_size, session=db
         )
