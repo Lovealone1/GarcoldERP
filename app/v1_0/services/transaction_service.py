@@ -284,32 +284,29 @@ class TransactionService:
             return True
     
     async def list_transactions(self, page: int, db: AsyncSession) -> TransactionPageDTO:
-        page = max(int(page or 1), 1)
-        page_size = int(self.PAGE_SIZE)
-        offset = (page - 1) * page_size
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
 
-        items, total = await self.tx_repo.list_paginated(
+        # Soporta que el repo devuelva (items, total) o (items, total, algo_mas)
+        items, total, *rest = await self.tx_repo.list_paginated(
             offset=offset, limit=page_size, session=db
         )
 
         view_items = [
             TransactionViewDTO(
                 id=t.id,
-                bank=(getattr(getattr(t, "bank", None), "name", None) or f"Bank {t.bank_id}"),
-                amount=(getattr(t, "amount", float("0.00"))),
-                type_str=(getattr(getattr(t, "type", None), "name", None) or "Desconocido"),
+                bank=(t.bank.name if getattr(t, "bank", None) else f"Bank {t.bank_id}"),
+                amount=float(t.amount) if t.amount is not None else 0.0,  # <- evita warn Decimal
+                type_str=(t.type.name if getattr(t, "type", None) else "Desconocido"),
                 description=getattr(t, "description", None),
                 created_at=t.created_at,
-                is_auto=bool(getattr(t, "is_auto", False)),
+                is_auto=t.is_auto,
             )
             for t in items
         ]
 
         total = int(total or 0)
-        total_pages = max(1, (total + page_size - 1) // page_size)  
-
-        has_next = page < total_pages
-        has_prev = page > 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
 
         return TransactionPageDTO(
             items=view_items,
@@ -317,6 +314,6 @@ class TransactionService:
             page_size=page_size,
             total=total,
             total_pages=total_pages,
-            has_next=has_next,
-            has_prev=has_prev,
+            has_next=page < total_pages,
+            has_prev=page > 1,
         )
