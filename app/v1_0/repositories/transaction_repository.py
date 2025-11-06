@@ -1,6 +1,7 @@
-from typing import List, Optional, Tuple
-from sqlalchemy import select, desc, or_, func, case
+from typing import List, Optional
+from sqlalchemy import select, desc, or_, func, tuple_, asc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.v1_0.models import Transaction
 from app.v1_0.schemas import TransactionCreate
@@ -66,17 +67,94 @@ class TransactionRepository(BaseRepository[Transaction]):
         res = await session.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def list_paginated(
-        self, offset: int, limit: int, session: AsyncSession
-    ) -> Tuple[List[Transaction], int]:
-        pin_neg1 = case((Transaction.id == -1, 0), else_=1)
-        stmt = (
-            select(Transaction)
-            .order_by(pin_neg1.asc(), desc(Transaction.created_at), Transaction.id.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        result = await session.execute(stmt)
-        items: List[Transaction] = list(result.scalars().all())
-        total: int = (await session.scalar(select(func.count(Transaction.id)))) or 0
-        return items, total
+    async def list_paginated(self, offset: int, limit: int, session: AsyncSession):
+        # pin
+        pin_exists = bool(await session.scalar(select(func.count()).where(Transaction.id == -1)))
+        take = limit + 1
+        eff_offset = max(offset - (1 if pin_exists else 0), 0)
+
+        # si estamos lejos, contar una sola vez es más barato que un OFFSET enorme
+        total_rows = await session.scalar(select(func.count(Transaction.id)).where(Transaction.id != -1)) or 0
+        use_tail = eff_offset > (total_rows // 2)
+
+        if eff_offset == 0:
+            rows = (
+                await session.execute(
+                    select(Transaction)
+                    .options(selectinload(Transaction.bank), selectinload(Transaction.type))
+                    .where(Transaction.id != -1)
+                    .order_by(desc(Transaction.created_at), Transaction.id.desc())
+                    .limit(take)
+                )
+            ).scalars().all()
+
+        elif not use_tail:
+            # frontera desde el inicio (DESC)
+            b = (
+                await session.execute(
+                    select(Transaction.created_at, Transaction.id)
+                    .where(Transaction.id != -1)
+                    .order_by(desc(Transaction.created_at), Transaction.id.desc())
+                    .offset(eff_offset).limit(1)
+                )
+            ).first()
+            if not b:
+                rows = []
+            else:
+                bc, bid = b
+                rows = (
+                    await session.execute(
+                        select(Transaction)
+                        .options(selectinload(Transaction.bank), selectinload(Transaction.type))
+                        .where(Transaction.id != -1)
+                        .where(tuple_(Transaction.created_at, Transaction.id) <= tuple_(bc, bid))
+                        .order_by(desc(Transaction.created_at), Transaction.id.desc())
+                        .limit(take)
+                    )
+                ).scalars().all()
+        else:
+            # frontera desde el final (ASC)
+            rev_offset = max(total_rows - eff_offset - 1, 0)
+            b = (
+                await session.execute(
+                    select(Transaction.created_at, Transaction.id)
+                    .where(Transaction.id != -1)
+                    .order_by(asc(Transaction.created_at), Transaction.id.asc())
+                    .offset(rev_offset).limit(1)
+                )
+            ).first()
+            if not b:
+                rows = []
+            else:
+                bc, bid = b
+                asc_rows = (
+                    await session.execute(
+                        select(Transaction)
+                        .options(selectinload(Transaction.bank), selectinload(Transaction.type))
+                        .where(Transaction.id != -1)
+                        .where(tuple_(Transaction.created_at, Transaction.id) >= tuple_(bc, bid))
+                        .order_by(asc(Transaction.created_at), Transaction.id.asc())
+                        .limit(take)
+                    )
+                ).scalars().all()
+                rows = list(reversed(asc_rows))  # devolvemos en DESC como el resto
+
+        items = []
+        if offset == 0 and pin_exists:
+            pin = (
+                await session.execute(
+                    select(Transaction)
+                    .options(selectinload(Transaction.bank), selectinload(Transaction.type))
+                    .where(Transaction.id == -1).limit(1)
+                )
+            ).scalars().first()
+            if pin:
+                items.append(pin)
+
+        has_next = len(rows) > limit
+        items.extend(rows[:limit])
+
+        # total (si ya lo calculaste arriba, úsalo)
+        total = total_rows + (1 if pin_exists else 0)
+
+        return items, has_next, total

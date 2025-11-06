@@ -284,41 +284,32 @@ class TransactionService:
             return True
     
     async def list_transactions(self, page: int, db: AsyncSession) -> TransactionPageDTO:
-        page_size = self.PAGE_SIZE
-        offset = max(page - 1, 0) * page_size
+        page = max(int(page or 1), 1)
+        page_size = int(self.PAGE_SIZE)
+        offset = (page - 1) * page_size
 
-        async with db.begin():
-            items, total = await self.tx_repo.list_paginated(
-                offset=offset, limit=page_size, session=db
+        items, total = await self.tx_repo.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
+            TransactionViewDTO(
+                id=t.id,
+                bank=(getattr(getattr(t, "bank", None), "name", None) or f"Bank {t.bank_id}"),
+                amount=(getattr(t, "amount", float("0.00"))),
+                type_str=(getattr(getattr(t, "type", None), "name", None) or "Desconocido"),
+                description=getattr(t, "description", None),
+                created_at=t.created_at,
+                is_auto=bool(getattr(t, "is_auto", False)),
             )
-
-            type_cache: dict[int, str] = {}
-            bank_cache: dict[int, str] = {}
-            view_items: list[TransactionViewDTO] = []
-
-            for t in items:
-                if t.type_id not in type_cache:
-                    tx_type = await self.type_repo.get_by_id(t.type_id, session=db)
-                    type_cache[t.type_id] = (tx_type.name if tx_type else "Desconocido")
-
-                if t.bank_id not in bank_cache:
-                    bank = await self.bank_repo.get_by_id(t.bank_id, session=db)
-                    bank_cache[t.bank_id] = (bank.name if bank else f"Bank {t.bank_id}")
-
-                view_items.append(
-                    TransactionViewDTO(
-                        id=t.id,
-                        bank=bank_cache[t.bank_id],
-                        amount=t.amount,
-                        type_str=type_cache[t.type_id],
-                        description=getattr(t, "description", None),
-                        created_at=t.created_at,
-                        is_auto=t.is_auto
-                    )
-                )
+            for t in items
+        ]
 
         total = int(total or 0)
-        total_pages = max(1, ceil(total / page_size)) if total else 1
+        total_pages = max(1, (total + page_size - 1) // page_size)  
+
+        has_next = page < total_pages
+        has_prev = page > 1
 
         return TransactionPageDTO(
             items=view_items,
@@ -326,6 +317,6 @@ class TransactionService:
             page_size=page_size,
             total=total,
             total_pages=total_pages,
-            has_next=page < total_pages,
-            has_prev=page > 1,
+            has_next=has_next,
+            has_prev=has_prev,
         )
