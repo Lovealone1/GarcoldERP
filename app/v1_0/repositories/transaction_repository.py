@@ -68,14 +68,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         return res.scalar_one_or_none()
 
     async def list_paginated(self, offset: int, limit: int, session: AsyncSession):
-        # pin
-        pin_exists = bool(await session.scalar(select(func.count()).where(Transaction.id == -1)))
-        take = limit + 1
+        pin_exists = bool(await session.scalar(
+            select(func.count()).where(Transaction.id == -1)
+        ))
         eff_offset = max(offset - (1 if pin_exists else 0), 0)
 
-        # si estamos lejos, contar una sola vez es más barato que un OFFSET enorme
-        total_rows = await session.scalar(select(func.count(Transaction.id)).where(Transaction.id != -1)) or 0
-        use_tail = eff_offset > (total_rows // 2)
+        total_rows = await session.scalar(
+            select(func.count(Transaction.id)).where(Transaction.id != -1)
+        ) or 0
+
+        take = limit + 1
 
         if eff_offset == 0:
             rows = (
@@ -88,58 +90,32 @@ class TransactionRepository(BaseRepository[Transaction]):
                 )
             ).scalars().all()
 
-        elif not use_tail:
-            # frontera desde el inicio (DESC)
-            b = (
+        else:
+            anchor = (
                 await session.execute(
                     select(Transaction.created_at, Transaction.id)
                     .where(Transaction.id != -1)
                     .order_by(desc(Transaction.created_at), Transaction.id.desc())
-                    .offset(eff_offset).limit(1)
+                    .offset(eff_offset - 1).limit(1)
                 )
             ).first()
-            if not b:
+
+            if not anchor:
                 rows = []
             else:
-                bc, bid = b
+                ac, aid = anchor
                 rows = (
                     await session.execute(
                         select(Transaction)
                         .options(selectinload(Transaction.bank), selectinload(Transaction.type))
                         .where(Transaction.id != -1)
-                        .where(tuple_(Transaction.created_at, Transaction.id) <= tuple_(bc, bid))
+                        .where(tuple_(Transaction.created_at, Transaction.id) < tuple_(ac, aid))  
                         .order_by(desc(Transaction.created_at), Transaction.id.desc())
                         .limit(take)
                     )
                 ).scalars().all()
-        else:
-            # frontera desde el final (ASC)
-            rev_offset = max(total_rows - eff_offset - 1, 0)
-            b = (
-                await session.execute(
-                    select(Transaction.created_at, Transaction.id)
-                    .where(Transaction.id != -1)
-                    .order_by(asc(Transaction.created_at), Transaction.id.asc())
-                    .offset(rev_offset).limit(1)
-                )
-            ).first()
-            if not b:
-                rows = []
-            else:
-                bc, bid = b
-                asc_rows = (
-                    await session.execute(
-                        select(Transaction)
-                        .options(selectinload(Transaction.bank), selectinload(Transaction.type))
-                        .where(Transaction.id != -1)
-                        .where(tuple_(Transaction.created_at, Transaction.id) >= tuple_(bc, bid))
-                        .order_by(asc(Transaction.created_at), Transaction.id.asc())
-                        .limit(take)
-                    )
-                ).scalars().all()
-                rows = list(reversed(asc_rows))  # devolvemos en DESC como el resto
 
-        items = []
+        items: list[Transaction] = []
         if offset == 0 and pin_exists:
             pin = (
                 await session.execute(
@@ -151,10 +127,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             if pin:
                 items.append(pin)
 
-        has_next = len(rows) > limit
-        items.extend(rows[:limit])
+        remaining_core = max(total_rows - eff_offset, 0)
+        visible_core = min(limit, remaining_core)  
 
-        # total (si ya lo calculaste arriba, úsalo)
+        has_next = eff_offset + visible_core < total_rows
+
+        page_rows = rows[:visible_core] if eff_offset == 0 else rows[:visible_core]
+        items.extend(page_rows)
+
         total = total_rows + (1 if pin_exists else 0)
-
-        return items, has_next, total
+        return items, total, has_next
