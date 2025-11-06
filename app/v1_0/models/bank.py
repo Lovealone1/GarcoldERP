@@ -1,7 +1,10 @@
 from sqlalchemy import String, Numeric, DateTime, text, func
 from datetime import datetime 
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .transaction import Transaction
 
 class Bank(Base):
     __tablename__ = "bank"
@@ -23,3 +26,6 @@ class Bank(Base):
     nullable=False,
     )
     account_number: Mapped[str | None] = mapped_column(String(50))
+    transactions: Mapped[list["Transaction"]] = relationship(
+        "Transaction", back_populates="bank", lazy="selectin"
+    )

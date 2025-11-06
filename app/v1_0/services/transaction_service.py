@@ -287,35 +287,23 @@ class TransactionService:
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
-        async with db.begin():
-            items, total = await self.tx_repo.list_paginated(
-                offset=offset, limit=page_size, session=db
+        # Soporta que el repo devuelva (items, total) o (items, total, algo_mas)
+        items, total, *rest = await self.tx_repo.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
+            TransactionViewDTO(
+                id=t.id,
+                bank=(t.bank.name if getattr(t, "bank", None) else f"Bank {t.bank_id}"),
+                amount=float(t.amount) if t.amount is not None else 0.0,  # <- evita warn Decimal
+                type_str=(t.type.name if getattr(t, "type", None) else "Desconocido"),
+                description=getattr(t, "description", None),
+                created_at=t.created_at,
+                is_auto=t.is_auto,
             )
-
-            type_cache: dict[int, str] = {}
-            bank_cache: dict[int, str] = {}
-            view_items: list[TransactionViewDTO] = []
-
-            for t in items:
-                if t.type_id not in type_cache:
-                    tx_type = await self.type_repo.get_by_id(t.type_id, session=db)
-                    type_cache[t.type_id] = (tx_type.name if tx_type else "Desconocido")
-
-                if t.bank_id not in bank_cache:
-                    bank = await self.bank_repo.get_by_id(t.bank_id, session=db)
-                    bank_cache[t.bank_id] = (bank.name if bank else f"Bank {t.bank_id}")
-
-                view_items.append(
-                    TransactionViewDTO(
-                        id=t.id,
-                        bank=bank_cache[t.bank_id],
-                        amount=t.amount,
-                        type_str=type_cache[t.type_id],
-                        description=getattr(t, "description", None),
-                        created_at=t.created_at,
-                        is_auto=t.is_auto
-                    )
-                )
+            for t in items
+        ]
 
         total = int(total or 0)
         total_pages = max(1, ceil(total / page_size)) if total else 1
