@@ -316,40 +316,33 @@ class SaleService:
             await self.sale_repository.delete_sale(sale_id, session=db)
 
     async def list_sales(self, page: int, db: AsyncSession) -> SalePageDTO:
-        offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
-            rows, total = await self.sale_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
+
+        items, total, *rest = await self.sale_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items: List[SaleDTO] = [
+            SaleDTO(
+                id=s.id,
+                customer=(s.customer.name if getattr(s, "customer", None) else f"Customer {s.customer_id}"),
+                bank=(s.bank.name if getattr(s, "bank", None) else f"Bank {s.bank_id}"),
+                status=(s.status.name if getattr(s, "status", None) else "Desconocido"),
+                total=float(s.total) if s.total is not None else 0.0,
+                remaining_balance=float(s.remaining_balance) if s.remaining_balance is not None else 0.0,
+                created_at=s.created_at,
             )
-
-            items: List[SaleDTO] = []
-            for s in rows:
-                customer = await self.customer_repository.get_by_id(s.customer_id, session=db)
-                bank = await self.bank_repository.get_by_id(s.bank_id, session=db)
-                status_row = await self.status_repository.get_by_id(s.status_id, session=db)
-
-                customer_name = customer.name if customer else "Desconocido"
-                bank_name = bank.name if bank else "Desconocido"
-                status_name = status_row.name if status_row else "Desconocido"
-
-                items.append(
-                    SaleDTO(
-                        id=s.id,
-                        customer=customer_name,
-                        bank=bank_name,
-                        status=status_name,
-                        total=s.total,
-                        remaining_balance=s.remaining_balance,
-                        created_at=s.created_at,
-                    )
-                )
+            for s in items
+        ]
 
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return SalePageDTO(
-            items=items,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

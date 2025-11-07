@@ -1,6 +1,7 @@
 from math import ceil
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
 
 from app.core.logger import logger
 from app.v1_0.repositories import (
@@ -103,45 +104,38 @@ class ExpenseService:
             return deleted
 
     async def list_paginated(self, page: int, db: AsyncSession) -> ExpensePageDTO:
-        """Paginated expenses with category and bank names resolved."""
-        offset = max(page - 1, 0) * self.PAGE_SIZE
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
+
         async with db.begin():
-            items, total = await self.expense_repo.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+            items, total, *_ = await self.expense_repo.list_paginated(
+                session=db,
+                offset=offset,
+                limit=page_size,
             )
 
-            cat_cache: dict[int, str] = {}
-            bank_cache: dict[int, str] = {}
-
-            out: list[ExpenseViewDTO] = []
-            for e in items:
-                cat_id = int(e.expense_category_id)
-                bank_id = int(e.bank_id)
-
-                if cat_id not in cat_cache:
-                    cat = await self.category_repo.get_by_id(cat_id, session=db)
-                    cat_cache[cat_id] = getattr(cat, "name", "") if cat else ""
-
-                if bank_id not in bank_cache:
-                    bank = await self.bank_repo.get_by_id(bank_id, session=db)
-                    bank_cache[bank_id] = getattr(bank, "name", f"Bank {bank_id}") if bank else ""
-
-                out.append(
-                    ExpenseViewDTO(
-                        id=e.id,
-                        category_name=cat_cache[cat_id],
-                        bank_name=bank_cache[bank_id],
-                        amount=float(e.amount or 0.0),
-                        expense_date=e.expense_date,
-                    )
-                )
+        view_items: List[ExpenseViewDTO] = [
+            ExpenseViewDTO(
+                id=e.id,
+                category_name=getattr(e.category, "name", ""),
+                bank_name=(
+                    e.bank.name
+                    if getattr(e, "bank", None)
+                    else f"Bank {e.bank_id}"
+                ),
+                amount=float(e.amount or 0.0),
+                expense_date=e.expense_date,
+            )
+            for e in items
+        ]
 
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return ExpensePageDTO(
-            items=out,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

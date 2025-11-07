@@ -2,11 +2,12 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta, datetime
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.v1_0.models import Sale
 from app.v1_0.schemas import SaleInsert
 from .base_repository import BaseRepository
-
+from .paginated import list_paginated_keyset
 class SaleRepository(BaseRepository[Sale]):
     def __init__(self) -> None:
         super().__init__(Sale)
@@ -70,20 +71,27 @@ class SaleRepository(BaseRepository[Sale]):
 
     async def list_paginated(
         self,
+        *,
+        session: AsyncSession,
         offset: int,
         limit: int,
-        session: AsyncSession
-    ) -> Tuple[List[Sale], int]:
-        stmt = (
-            select(Sale)
-            .order_by(Sale.id.asc())
-            .offset(offset)
-            .limit(limit)
+    ) -> Tuple[List[Sale], int, bool]:
+        return await list_paginated_keyset(
+            session=session,
+            model=Sale,
+            created_col=Sale.created_at,
+            id_col=Sale.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(Sale.id != -1,),
+            eager=(
+                selectinload(Sale.customer),
+                selectinload(Sale.bank),
+                selectinload(Sale.status),
+            ),
+            pin_enabled=True,
+            pin_predicate=(Sale.id == -1),
         )
-        result = await session.execute(stmt)
-        items: List[Sale] = list(result.scalars().all())
-        total = await session.scalar(select(func.count(Sale.id)))
-        return items, int(total or 0)
 
     async def sales_by_day(
         self,

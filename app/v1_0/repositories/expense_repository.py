@@ -3,10 +3,12 @@ from datetime import date
 
 from sqlalchemy import select, func, Date, cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.v1_0.models import Expense
 from app.v1_0.schemas import ExpenseCreate
 from .base_repository import BaseRepository
+from .paginated import list_paginated_keyset
 
 class ExpenseRepository(BaseRepository[Expense]):
     def __init__(self) -> None:
@@ -45,23 +47,26 @@ class ExpenseRepository(BaseRepository[Expense]):
 
     async def list_paginated(
         self,
+        *,
+        session: AsyncSession,
         offset: int,
         limit: int,
-        session: AsyncSession
-    ) -> Tuple[List[Expense], int]:
-        """
-        Paginated list ordered by ID ASC. Returns (items, total).
-        """
-        stmt = (
-            select(Expense)
-            .order_by(Expense.id.desc())
-            .offset(offset)
-            .limit(limit)
+    ) -> Tuple[List[Expense], int, bool]:
+        return await list_paginated_keyset(
+            session=session,
+            model=Expense,
+            created_col=Expense.expense_date,
+            id_col=Expense.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(Expense.id != -1,),
+            eager=(
+                selectinload(Expense.category),
+                selectinload(Expense.bank),
+            ),
+            pin_enabled=True,
+            pin_predicate=(Expense.id == -1),
         )
-        result = await session.execute(stmt)
-        items: List[Expense] = list(result.scalars().all())
-        total = await session.scalar(select(func.count(Expense.id)))
-        return items, int(total or 0)
 
     async def expenses_by_day(
         self,

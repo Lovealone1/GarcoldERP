@@ -295,7 +295,7 @@ class TransactionService:
             TransactionViewDTO(
                 id=t.id,
                 bank=(t.bank.name if getattr(t, "bank", None) else f"Bank {t.bank_id}"),
-                amount=float(t.amount) if t.amount is not None else 0.0,  # <- evita warn Decimal
+                amount=float(t.amount) if t.amount is not None else 0.0,  
                 type_str=(t.type.name if getattr(t, "type", None) else "Desconocido"),
                 description=getattr(t, "description", None),
                 created_at=t.created_at,
