@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from typing import Optional
 from datetime import datetime
+
 from .page import PageDTO
 
 @dataclass(slots=True)
@@ -13,6 +15,8 @@ class ProductDTO:
     sale_price: float
     is_active: bool
     created_at: datetime
+    barcode: Optional[str] = None
+    barcode_type: Optional[str] = None
 
 
 @dataclass

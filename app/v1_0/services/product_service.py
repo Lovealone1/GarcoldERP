@@ -23,10 +23,20 @@ class ProductService:
 
     async def create(self, payload: ProductUpsert, db: AsyncSession) -> ProductDTO:
         logger.info(f"[ProductService] Creating product: {payload.model_dump()}")
+
         try:
-            async with db.begin():
+            async with db.begin():  
+                if payload.barcode:
+                    existing = await self.product_repository.get_by_barcode(payload.barcode, db)
+                    if existing:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Barcode already in use for another product",
+                        )
                 p = await self.product_repository.create_product(payload, db)
+
             logger.info(f"[ProductService] Product created ID={p.id}")
+
             return ProductDTO(
                 id=p.id,
                 reference=p.reference,
@@ -36,7 +46,12 @@ class ProductService:
                 sale_price=p.sale_price,
                 is_active=p.is_active,
                 created_at=p.created_at,
+                barcode=p.barcode,
+                barcode_type=p.barcode_type,
             )
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"[ProductService] Create failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to create product")
@@ -55,6 +70,8 @@ class ProductService:
                 sale_price=p.sale_price,
                 is_active=p.is_active,
                 created_at=p.created_at,
+                barcode=p.barcode,
+                barcode_type=p.barcode_type,
             )
         except HTTPException:
             raise
@@ -102,6 +119,8 @@ class ProductService:
                 sale_price=p.sale_price,
                 is_active=p.is_active,
                 created_at=p.created_at,
+                barcode=p.barcode,
+                barcode_type=p.barcode_type
             )
             for p in items
         ]
@@ -121,11 +140,21 @@ class ProductService:
         
     async def update(self, product_id: int, payload: ProductUpsert, db: AsyncSession) -> ProductDTO:
         logger.info(f"[ProductService] Update product ID={product_id}")
+
         try:
             async with db.begin():
+                if payload.barcode:
+                    existing = await self.product_repository.get_by_barcode(payload.barcode, db)
+                    if existing and existing.id != product_id:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Barcode already in use for another product",
+                        )
+
                 p = await self.product_repository.update_product(product_id, payload, db)
-            if not p:
-                raise HTTPException(status_code=404, detail="Product not found.")
+                if not p:
+                    raise HTTPException(status_code=404, detail="Product not found.")
+
             return ProductDTO(
                 id=p.id,
                 reference=p.reference,
@@ -135,7 +164,10 @@ class ProductService:
                 sale_price=p.sale_price,
                 is_active=p.is_active,
                 created_at=p.created_at,
+                barcode=p.barcode,
+                barcode_type=p.barcode_type,
             )
+
         except HTTPException:
             raise
         except Exception as e:
@@ -262,3 +294,20 @@ class ProductService:
         except Exception as e:
             logger.error(f"[ProductService] Sold products failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to fetch sold products")
+
+    async def get_by_barcode(self, barcode: str, db: AsyncSession) -> ProductDTO | None:
+        p = await self.product_repository.get_by_barcode(barcode, db)
+        if not p:
+            return None
+        return ProductDTO(
+            id=p.id,
+            reference=p.reference,
+            barcode=p.barcode,
+            barcode_type=p.barcode_type,
+            description=p.description,
+            quantity=p.quantity,
+            purchase_price=p.purchase_price,
+            sale_price=p.sale_price,
+            is_active=p.is_active,
+            created_at=p.created_at,
+        )

@@ -282,3 +282,28 @@ async def sold_in_range(
     except Exception as e:
         logger.error(f"[ProductRouter] sold_in_range error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch sold products")
+
+@router.get(
+    "/by-barcode/{barcode}",
+    response_model=ProductDTO,
+    summary="Get product by barcode",
+)
+@inject
+async def get_product_by_barcode(
+    barcode: str,
+    db: AsyncSession = Depends(get_db),
+    service: ProductService = Depends(
+        Provide[ApplicationContainer.api_container.product_service]
+    ),
+):
+    logger.debug(f"[ProductRouter] get by barcode={barcode}")
+    try:
+        product = await service.get_by_barcode(barcode, db)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ProductRouter] get_by_barcode error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch product by barcode")

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import date
 from pydantic import BaseModel, Field
 
@@ -9,15 +9,27 @@ class ProductUpsert(BaseModel):
     purchase_price: float = Field(..., ge=0.0, description="Unit purchase price")
     sale_price: float = Field(..., ge=0.0, description="Unit sale price")
     quantity: int = Field(..., ge=0, description="Initial stock quantity")
-
+    barcode: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Optional barcode; must be unique if provided",
+    )
+    barcode_type: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        description="Optional barcode format (EAN_13, CODE_128, etc.)",
+    )
     model_config = {
         "json_schema_extra": {
             "example": {
                 "reference": "SKU-001",
+                "barcode": "7701234567890",
+                "barcode_type": "EAN_13",
                 "description": "Standard widget",
                 "purchase_price": 12.5,
                 "sale_price": 19.99,
-                "quantity": 100
+                "quantity": 100,
             }
         }
     }

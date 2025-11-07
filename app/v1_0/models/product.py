@@ -22,5 +22,8 @@ class Product(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
+    
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    barcode_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    
     items = relationship("SaleItem", back_populates="product", cascade="all, delete-orphan")

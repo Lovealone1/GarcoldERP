@@ -17,7 +17,7 @@ class ProductRepository(BaseRepository[Product]):
     async def create_product(
         self,
         payload: ProductUpsert,
-        session: AsyncSession
+        session: AsyncSession,
     ) -> Product:
         entity = Product(
             reference=payload.reference,
@@ -25,6 +25,8 @@ class ProductRepository(BaseRepository[Product]):
             purchase_price=payload.purchase_price,
             sale_price=payload.sale_price,
             quantity=payload.quantity,
+            barcode=payload.barcode,             
+            barcode_type=payload.barcode_type,   
         )
         await self.add(entity, session)
         return entity
@@ -47,7 +49,15 @@ class ProductRepository(BaseRepository[Product]):
             return None
 
         data = payload.model_dump(exclude_unset=True)
-        allowed = {"reference", "description", "purchase_price", "sale_price", "quantity"}
+        allowed = {
+            "reference", 
+            "description",
+            "purchase_price",
+            "sale_price", 
+            "quantity",
+            "barcode",        
+            "barcode_type",   
+        }
         for k, v in data.items():
             if k in allowed:
                 setattr(entity, k, v)
@@ -258,3 +268,12 @@ class ProductRepository(BaseRepository[Product]):
             total += len(batch)
 
         return total
+    
+    async def get_by_barcode(
+        self,
+        barcode: str,
+        session: AsyncSession,
+    ) -> Optional[Product]:
+        stmt = select(Product).where(Product.barcode == barcode)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
