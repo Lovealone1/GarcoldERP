@@ -1,5 +1,3 @@
-# app/v1_0/services/profit_service.py
-
 from math import ceil
 from typing import List
 from fastapi import HTTPException
@@ -17,8 +15,6 @@ from app.v1_0.entities import (
     ProfitItemDTO,
 )
 
-
-
 class ProfitService:
     def __init__(
         self,
@@ -30,31 +26,32 @@ class ProfitService:
         self.profit_item_repository = profit_item_repository
         self.product_repository = product_repository
         self.PAGE_SIZE = 16
+        
     async def list_profits(self, page: int, db: AsyncSession) -> ProfitPageDTO:
-        """
-        Paginated list of profits ordered by id asc.
-        """
-        offset = (page - 1) * self.PAGE_SIZE
-        async with db.begin():
-            items, total = await self.profit_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
+
+        items, total, *rest = await self.profit_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
+            ProfitDTO(
+                id=p.id,
+                sale_id=p.sale_id,
+                profit=float(p.profit) if p.profit is not None else 0.0,
+                created_at=p.created_at,
             )
+            for p in items
+        ]
 
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
-        items=[
-                ProfitDTO(
-                    id=p.id,
-                    sale_id=p.sale_id,
-                    profit=float(p.profit),
-                    created_at=p.created_at,
-                )
-                for p in items
-            ]
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return ProfitPageDTO(
-            items = items,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

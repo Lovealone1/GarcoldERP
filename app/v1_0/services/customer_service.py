@@ -92,32 +92,35 @@ class CustomerService:
             raise HTTPException(status_code=500, detail="Failed to list customers")
 
     async def list_paginated(self, page: int, db: AsyncSession) -> CustomerPageDTO:
-        offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
-            items, total = await self.customer_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
-            )
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
 
-        items_dto = [
+        items, total, *_ = await self.customer_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
             CustomerDTO(
-                id=c.id, 
-                tax_id=c.tax_id, 
-                name=c.name, 
+                id=c.id,
+                tax_id=c.tax_id,
+                name=c.name,
                 address=c.address,
-                city=c.city, 
-                phone=c.phone, 
+                city=c.city,
+                phone=c.phone,
                 email=c.email,
-                created_at=c.created_at, 
+                created_at=c.created_at,
                 balance=c.balance,
             )
             for c in items
         ]
+
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return CustomerPageDTO(
-            items=items_dto,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

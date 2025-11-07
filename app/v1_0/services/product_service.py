@@ -13,7 +13,7 @@ from app.v1_0.entities import ProductDTO, ProductPageDTO, SaleProductsDTO
 class ProductService:
     def __init__(self, product_repository: ProductRepository) -> None:
         self.product_repository = product_repository
-        self.PAGE_SIZE = 10
+        self.PAGE_SIZE = 8
 
     async def _require(self, product_id: int, db: AsyncSession):
         p = await self.product_repository.get_product_by_id(product_id, db)
@@ -85,13 +85,14 @@ class ProductService:
             raise HTTPException(status_code=500, detail="Failed to list products")
 
     async def list_paginated(self, page: int, db: AsyncSession) -> ProductPageDTO:
-        offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
-            items, total = await self.product_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
-            )
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
 
-        items_dto = [
+        items, total, *_ = await self.product_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
             ProductDTO(
                 id=p.id,
                 reference=p.reference,
@@ -104,18 +105,20 @@ class ProductService:
             )
             for p in items
         ]
+
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return ProductPageDTO(
-            items=items_dto,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,
             has_prev=page > 1,
         )
-
+        
     async def update(self, product_id: int, payload: ProductUpsert, db: AsyncSession) -> ProductDTO:
         logger.info(f"[ProductService] Update product ID={product_id}")
         try:

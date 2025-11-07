@@ -238,40 +238,33 @@ class PurchaseService:
             await self.purchase_repository.delete_purchase(purchase_id, session=db)
 
     async def list_purchases(self, page: int, db: AsyncSession) -> PurchasePageDTO:
-        offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
-            rows, total = await self.purchase_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
+
+        items_raw, total, *_ = await self.purchase_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items: List[PurchaseDTO] = [
+            PurchaseDTO(
+                id=p.id,
+                supplier=(p.supplier.name if getattr(p, "supplier", None) else f"Supplier {p.supplier_id}"),
+                bank=(p.bank.name if getattr(p, "bank", None) else f"Bank {p.bank_id}"),
+                status=(p.status.name if getattr(p, "status", None) else "Desconocido"),
+                total=float(p.total) if p.total is not None else 0.0,
+                balance=float(p.balance) if p.balance is not None else 0.0,
+                purchase_date=p.purchase_date,
             )
-
-            items: List[PurchaseDTO] = []
-            for p in rows:
-                supplier = await self.supplier_repository.get_by_id(p.supplier_id, session=db)
-                bank = await self.bank_repository.get_by_id(p.bank_id, session=db)
-                status_row = await self.status_repository.get_by_id(p.status_id, session=db)
-
-                supplier_name = supplier.name if supplier else "Desconocido"
-                bank_name = bank.name if bank else "Desconocido"
-                status_name = status_row.name if status_row else "Desconocido"
-
-                items.append(
-                    PurchaseDTO(
-                        id=p.id,
-                        supplier=supplier_name,
-                        bank=bank_name,
-                        status=status_name,
-                        total=p.total,
-                        balance=p.balance,
-                        purchase_date=p.purchase_date,
-                    )
-                )
+            for p in items_raw
+        ]
 
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return PurchasePageDTO(
-            items=items,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

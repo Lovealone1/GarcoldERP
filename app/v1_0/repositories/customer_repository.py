@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.models import Customer
 from app.v1_0.schemas import CustomerCreate, CustomerUpdate
 from .base_repository import BaseRepository
-
+from .paginated import list_paginated_keyset
 class CustomerRepository(BaseRepository[Customer]):
     def __init__(self):
         super().__init__(Customer)
@@ -90,18 +90,21 @@ class CustomerRepository(BaseRepository[Customer]):
         return True
 
     async def list_paginated(
-    self, offset: int, limit: int, session: AsyncSession
-    ) -> Tuple[List[Customer], int]:
-        stmt = (
-            select(Customer)
-            .order_by(Customer.id.asc())
-            .offset(offset)
-            .limit(limit)
+    self, *, offset: int, limit: int, session: AsyncSession
+    ) -> Tuple[list[Customer], int, bool]:
+        items, total, has_next = await list_paginated_keyset(
+            session=session,
+            model=Customer,
+            created_col=Customer.created_at,
+            id_col=Customer.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(),  
+            eager=(),
+            pin_enabled=False,
+            pin_predicate=None,
         )
-        result = await session.execute(stmt)
-        items: List[Customer] = list(result.scalars().all())
-        total: int = (await session.scalar(select(func.count(Customer.id)))) or 0
-        return items, total
+        return items, total, has_next
     
     async def insert_many(
     self,

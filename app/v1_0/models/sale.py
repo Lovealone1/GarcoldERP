@@ -13,10 +13,23 @@ class Sale(Base):
 
     total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     remaining_balance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    status_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    status_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("status.id", name="sale_status_id_fkey", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
 
     customer = relationship("Customer")
     bank = relationship("Bank")
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
     profit = relationship("Profit", back_populates="sale", cascade="all, delete-orphan", uselist=False)
     payments = relationship("SalePayment", back_populates="sale")
+    
+    customer = relationship("Customer", lazy="selectin")
+    bank = relationship("Bank", lazy="selectin")
+    status = relationship("Status", lazy="selectin")
+
+    items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan", lazy="selectin")
+    profit = relationship("Profit", back_populates="sale", cascade="all, delete-orphan", uselist=False, lazy="selectin")
+    payments = relationship("SalePayment", back_populates="sale", lazy="selectin")

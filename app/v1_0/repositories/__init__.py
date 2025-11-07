@@ -24,6 +24,7 @@ from .user_repository import UserRepository
 from .permission_repository import PermissionRepository
 from .role_repository import RoleRepository
 from .role_permission_repository import RolePermissionRepository
+from .paginated import list_paginated_keyset
 __all__ = [
     "BaseRepository",
     "BankRepository",
@@ -50,5 +51,6 @@ __all__ = [
     "UserRepository",
     "PermissionRepository",
     "RoleRepository",
-    "RolePermissionRepository"
+    "RolePermissionRepository",
+    "list_paginated_keyset"
 ]

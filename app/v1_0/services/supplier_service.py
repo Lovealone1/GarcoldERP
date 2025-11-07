@@ -83,25 +83,34 @@ class SupplierService:
             raise HTTPException(status_code=500, detail="Failed to list suppliers")
 
     async def list_paginated(self, page: int, db: AsyncSession) -> SupplierPageDTO:
-        offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
-            items, total = await self.supplier_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
-            )
+        page_size = self.PAGE_SIZE
+        offset = max(page - 1, 0) * page_size
 
-        items_dto = [
+        items, total, *_ = await self.supplier_repository.list_paginated(
+            offset=offset, limit=page_size, session=db
+        )
+
+        view_items = [
             SupplierDTO(
-                id=s.id, name=s.name, tax_id=s.tax_id, email=s.email,
-                phone=s.phone, address=s.address, city=s.city, created_at=s.created_at,
+                id=s.id,
+                name=s.name,
+                tax_id=s.tax_id,
+                email=s.email,
+                phone=s.phone,
+                address=s.address,
+                city=s.city,
+                created_at=s.created_at,
             )
             for s in items
         ]
+
         total = int(total or 0)
-        total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
+        total_pages = max(1, ceil(total / page_size)) if total else 1
+
         return SupplierPageDTO(
-            items=items_dto,
+            items=view_items,
             page=page,
-            page_size=self.PAGE_SIZE,
+            page_size=page_size,
             total=total,
             total_pages=total_pages,
             has_next=page < total_pages,

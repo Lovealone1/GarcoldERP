@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.models import Profit
 from app.v1_0.schemas import ProfitCreate
 from .base_repository import BaseRepository
-
+from .paginated import list_paginated_keyset
 class ProfitRepository(BaseRepository[Profit]):
     def __init__(self) -> None:
         super().__init__(Profit)
@@ -49,15 +49,23 @@ class ProfitRepository(BaseRepository[Profit]):
         limit: int,
         session: AsyncSession
     ) -> Tuple[List[Profit], int]:
-        stmt = (
-            select(Profit)
-            .order_by(Profit.id.desc())
-            .offset(offset)
-            .limit(limit)
+        """
+        Keyset pagination: (created_at DESC, id DESC).
+        Conserva la firma (items, total). Si luego quieres `has_next`,
+        expón otro método o cambia la tupla a 3 elementos.
+        """
+        items, total, _has_next = await list_paginated_keyset(
+            session=session,
+            model=Profit,
+            created_col=Profit.created_at,  
+            id_col=Profit.id,                
+            limit=limit,
+            offset=offset,
+            base_filters=(),                 
+            eager=(),                        
+            pin_enabled=False,               
+            pin_predicate=None,
         )
-        result = await session.execute(stmt)
-        items: List[Profit ]= list(result.scalars().all())
-        total = await session.scalar(select(func.count(Profit.id)))
         return items, int(total or 0)
 
     async def get_profit_by_sale_id(

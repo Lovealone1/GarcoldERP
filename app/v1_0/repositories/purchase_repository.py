@@ -3,10 +3,12 @@ from datetime import date, timedelta, datetime
 
 from sqlalchemy import select, func, Date, cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.v1_0.models import Purchase
 from app.v1_0.schemas import PurchaseInsert
 from .base_repository import BaseRepository
+from .paginated import list_paginated_keyset
 
 class PurchaseRepository(BaseRepository[Purchase]):
     def __init__(self) -> None:
@@ -67,25 +69,24 @@ class PurchaseRepository(BaseRepository[Purchase]):
         return True
 
     async def list_paginated(
-        self,
-        offset: int,
-        limit: int,
-        session: AsyncSession
-    ) -> Tuple[List[Purchase], int]:
-        """
-        Paginated list ordered by ID ASC.
-        Returns (items, total).
-        """
-        stmt = (
-            select(Purchase)
-            .order_by(Purchase.id.asc())
-            .offset(offset)
-            .limit(limit)
+        self, *, session: AsyncSession, offset: int, limit: int
+    ) -> Tuple[List[Purchase], int, bool]:
+        return await list_paginated_keyset(
+            session=session,
+            model=Purchase,
+            created_col=Purchase.purchase_date,
+            id_col=Purchase.id,
+            limit=limit,
+            offset=offset,
+            base_filters=(Purchase.id != -1,),
+            eager=(
+                selectinload(Purchase.supplier),
+                selectinload(Purchase.bank),
+                selectinload(Purchase.status),
+            ),
+            pin_enabled=True,
+            pin_predicate=(Purchase.id == -1),
         )
-        result = await session.execute(stmt)
-        items: List[Purchase]= list(result.scalars().all())
-        total = await session.scalar(select(func.count(Purchase.id)))
-        return items, int(total or 0)
 
     async def purchases_by_day(
         self,
