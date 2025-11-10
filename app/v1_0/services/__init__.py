@@ -23,6 +23,7 @@ from .role_permission_service import RolePermissionService
 from .supabase_admin import SupabaseAdminService
 from .user_service import UserService
 from .company_service import CompanyService
+from .realtime_events_service import publish_realtime_event
 __all__=[
     "BankService",
     "SupplierService",
@@ -48,5 +49,6 @@ __all__=[
     "RolePermissionService",
     "SupabaseAdminService",
     "UserService",
-    "CompanyService"
+    "CompanyService",
+    "publish_realtime_event"
     ]

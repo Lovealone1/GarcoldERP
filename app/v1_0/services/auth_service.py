@@ -42,7 +42,6 @@ class AuthService:
                 out = await self.user_repository.upsert_basics(u, email, display_name, db)
                 rid = out.role_id
             else:
-                # lock a nivel transacción (no abrir begin aquí)
                 await self.user_repository.advisory_xact_lock(db)
 
                 u = await self.user_repository.get_by_sub(sub, db)

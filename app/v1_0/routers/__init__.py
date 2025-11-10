@@ -22,6 +22,7 @@ from .auth_router import router as auth_router
 from .role_permission_router import router as role_permission_router
 from .admin_users_router import router as admin_users_router
 from .company_router import router as company_router
+from .realtime_router import router as realtime_router  
 defined_routers = [
     bank_router,
     supplier_router,
@@ -46,5 +47,6 @@ defined_routers = [
     auth_router,
     role_permission_router,
     admin_users_router,
-    company_router
+    company_router,
+    realtime_router,
     ]

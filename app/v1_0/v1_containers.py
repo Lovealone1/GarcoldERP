@@ -55,7 +55,7 @@ from app.v1_0.services import (
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
-
+from app.core.realtime import ConnectionManager
 class APIContainer(containers.DeclarativeContainer):
     pdf_renderer = providers.Singleton(PdfRenderer)
     bank_repository = providers.Singleton(BankRepository)
@@ -210,6 +210,7 @@ class APIContainer(containers.DeclarativeContainer):
         investment_repository = investment_repository
     )
     cloud_storage_service = providers.Singleton(CloudStorageService)
+    realtime_service = providers.Singleton(ConnectionManager)
     media_service = providers.Factory(
         MediaService,
         media_repository=media_repository,
