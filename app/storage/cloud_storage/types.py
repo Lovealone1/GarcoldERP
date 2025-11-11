@@ -2,7 +2,7 @@ from enum import StrEnum
 from typing import Optional
 
 try:
-    import filetype  # fallback puro-Python
+    import filetype  
 except Exception:
     filetype = None
 

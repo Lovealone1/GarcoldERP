@@ -60,7 +60,7 @@ class PurchaseService:
                 status_id=status_id,
                 total=0.0,
                 balance=0.0,
-                purchase_date=purchase_date or datetime.now(),  # ← usar fecha opcional
+                purchase_date=purchase_date or datetime.now(),  
             )
             purchase = await self.purchase_repository.create_purchase(purchase_stub, session=db)
 
@@ -210,7 +210,6 @@ class PurchaseService:
             if not p:
                 raise HTTPException(status_code=404, detail="Purchase not found")
 
-            # restore inventory (purchase had increased stock)
             items = await self.purchase_item_repository.get_by_purchase_id(purchase_id, session=db)
             for it in items:
                 await self.product_repository.decrease_quantity(it.product_id, it.quantity, session=db)
@@ -223,14 +222,11 @@ class PurchaseService:
             payments = await self.purchase_payment_repository.list_by_purchase(purchase_id, session=db)
 
             if is_credit_like:
-                # each payment originally DECREASED bank balance → undo = INCREASE bank
                 for pay in payments:
                     await self.bank_repository.increase_balance(pay.bank_id, float(pay.amount or 0), session=db)
             elif is_cash:
-                # cash purchase originally DECREASED bank by total → undo = INCREASE
                 await self.bank_repository.increase_balance(p.bank_id, float(p.total or 0), session=db)
 
-            # remove children and linked transactions
             await self.purchase_payment_repository.delete_by_purchase(purchase_id, session=db)
             await self.purchase_item_repository.delete_by_purchase(purchase_id, session=db)
             await self.transaction_service.delete_purchase_transactions(purchase_id, db=db)

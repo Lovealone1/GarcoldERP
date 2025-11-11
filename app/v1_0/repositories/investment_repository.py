@@ -105,7 +105,7 @@ class InvestmentRepository(BaseRepository[Investment]):
         stmt = (
             update(Investment)
             .where(Investment.id == investment_id)
-            .where(func.coalesce(Investment.balance, 0) >= amount)  # evita saldo negativo
+            .where(func.coalesce(Investment.balance, 0) >= amount)  
             .values(
                 balance=func.coalesce(Investment.balance, 0) - amount
             )
@@ -114,7 +114,6 @@ class InvestmentRepository(BaseRepository[Investment]):
         res = await session.execute(stmt)
         inv = res.scalar_one_or_none()
         if inv is None:
-            # no existe o fondos insuficientes
             raise ValueError("insufficient_balance_or_not_found")
         return inv
 

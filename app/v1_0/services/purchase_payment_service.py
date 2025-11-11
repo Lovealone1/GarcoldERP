@@ -67,16 +67,13 @@ class PurchasePaymentService:
             if float(bank.balance or 0.0) < amount:
                 raise HTTPException(status_code=400, detail="Insufficient bank balance.")
 
-            # Persist payment
             payment = await self.purchase_payment_repository.create_payment(payload, session=db)
 
-            # Update purchase balance
             new_balance = remaining - amount
             await self.purchase_repository.update_purchase(
                 purchase.id, {"balance": new_balance}, session=db
             )
 
-            # If fully paid, set status to 'compra cancelada'
             if new_balance == 0:
                 canceled = await self.status_repository.get_by_name("compra cancelada", session=db)
                 if canceled:
@@ -84,10 +81,8 @@ class PurchasePaymentService:
                         purchase.id, {"status_id": canceled.id}, session=db
                     )
 
-            # Bank balance down
             await self.bank_repository.decrease_balance(payload.bank_id, amount, session=db)
 
-            # Create bank transaction (lookup type by name; no hardcoded ids)
             try:
                 tx_type_id = await self.transaction_service.type_repo.get_id_by_name(
                     "Pago compra", session=db
@@ -134,7 +129,6 @@ class PurchasePaymentService:
             if not purchase:
                 raise HTTPException(status_code=404, detail="Associated purchase not found")
 
-            # If fully paid ('compra cancelada'), revert to credit
             current_status = await self.status_repository.get_by_id(purchase.status_id, session=db)
             if current_status and (current_status.name or "").lower() == "compra cancelada":
                 credit_status = await self.status_repository.get_by_name("compra credito", session=db)
@@ -143,20 +137,16 @@ class PurchasePaymentService:
                         purchase.id, {"status_id": credit_status.id}, session=db
                     )
 
-            # Restore purchase balance
             amount = float(payment.amount or 0.0)
             new_balance = float(purchase.balance or 0.0) + amount
             await self.purchase_repository.update_purchase(
                 purchase.id, {"balance": new_balance}, session=db
             )
 
-            # Adjust bank (add back the cash that was previously deducted)
             await self.bank_repository.increase_balance(payment.bank_id, amount, session=db)
 
-            # Delete the payment record
             await self.purchase_payment_repository.delete_payment(payment_id, session=db)
 
-            # Remove linked transaction(s)
             await self.transaction_service.delete_purchase_payment_transaction(
                 payment_id, payment.purchase_id, db=db
             )

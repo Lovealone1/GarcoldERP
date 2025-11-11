@@ -55,7 +55,7 @@ from app.v1_0.services import (
     )
 from app.storage.cloud_storage import CloudStorageService
 from app.utils.pdf_renderer import PdfRenderer
-
+from app.core.realtime import ConnectionManager
 class APIContainer(containers.DeclarativeContainer):
     pdf_renderer = providers.Singleton(PdfRenderer)
     bank_repository = providers.Singleton(BankRepository)
@@ -83,7 +83,7 @@ class APIContainer(containers.DeclarativeContainer):
     permission_repository = providers.Singleton(PermissionRepository)
     role_repository = providers.Singleton(RoleRepository)
     role_permission_repository = providers.Singleton(RolePermissionRepository)
-    
+    realtime_manager = providers.Singleton(ConnectionManager)
     bank_service = providers.Singleton(
         BankService, 
         bank_repository=bank_repository
@@ -149,7 +149,8 @@ class APIContainer(containers.DeclarativeContainer):
         profit_item_repository = profit_item_repository,
         bank_repository = bank_repository, 
         sale_payment_repository = sale_payment_repository,
-        transaction_service = transaction_service
+        transaction_service = transaction_service, 
+        realtime_manager = realtime_manager
     )
     sale_payment_service = providers.Singleton(
         SalePaymentService,

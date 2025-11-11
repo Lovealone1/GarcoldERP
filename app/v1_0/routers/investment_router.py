@@ -202,7 +202,6 @@ async def withdraw_investment(
     try:
         res = await service.withdraw(payload, db)
         if res is None:
-            # liquidación total
             return {"deleted": True, "investment_id": payload.investment_id}
         return res
     except HTTPException:

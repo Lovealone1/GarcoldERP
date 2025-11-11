@@ -209,11 +209,8 @@ class CustomerService:
             raise HTTPException(status_code=422, detail=f"Exceeds balance ({current_balance:.2f})")
 
         try:
-            # 1) Descuenta saldo del cliente
             await self.customer_repository.update_balance(customer_id, current_balance - amount, db)
-            # 2) Aumenta saldo del banco  (usa el mismo parámetro `db`)
             await self.bank_repository.update_balance(bank_id, float(bank.balance or 0.0) + amount, session=db)
-            # 3) Transacción bancaria
             await self.transaction_service.insert_transaction(
                 TransactionCreate(
                     bank_id=bank_id,

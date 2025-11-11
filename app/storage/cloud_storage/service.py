@@ -36,11 +36,11 @@ class CloudStorageService:
             key,
             ttl_sec=expires,
             content_type=content_type,
-            cache_control=cache,   # <- se firma
+            cache_control=cache,   
         )
         headers = {
             "Content-Type": content_type,
-            "Cache-Control": cache,  # <- debes enviarlo
+            "Cache-Control": cache,  
         }
         return key, url, headers
 

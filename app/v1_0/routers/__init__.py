@@ -46,5 +46,5 @@ defined_routers = [
     auth_router,
     role_permission_router,
     admin_users_router,
-    company_router
+    company_router,
     ]

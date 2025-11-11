@@ -28,7 +28,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
                 "app.v1_0.routers.auth_router", 
                 "app.v1_0.routers.role_permission_router", 
                 "app.v1_0.routers.admin_users_router",
-                "app.v1_0.routers.company_router"
+                "app.v1_0.routers.company_router", 
+                "app.v1_0.routers.realtime_router", 
             ]
     )
     db_session = providers.Object(async_session)

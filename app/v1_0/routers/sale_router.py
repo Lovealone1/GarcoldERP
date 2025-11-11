@@ -4,14 +4,16 @@ from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+from app.core.security.deps import AuthContext, get_auth_context
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
 from app.v1_0.entities import SaleDTO, SalePageDTO, SaleItemViewDTO
 from app.v1_0.services import SaleService
-
+from app.core.security.realtime_auth import build_channel_id_from_auth
 router = APIRouter(prefix="/sales", tags=["Sales"])
+
 
 
 @router.post(
@@ -25,22 +27,38 @@ async def finalize_sale(
     customer_id: int = Body(..., embed=True),
     bank_id: int = Body(..., embed=True),
     status_id: int = Body(..., embed=True),
-    cart: List[Dict[str, Any]] = Body(..., embed=True, description="Cart items"),
-    sale_date: Optional[datetime] = Body(None, embed=True, description="Optional sale datetime"),
+    cart: List[Dict[str, Any]] = Body(..., embed=True),
+    sale_date: Optional[datetime] = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
-    service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
+    auth_ctx: AuthContext = Depends(get_auth_context),
+    service: SaleService = Depends(
+        Provide[ApplicationContainer.api_container.sale_service]
+    ),
 ):
     logger.info(
-        "[SaleRouter] finalize_sale "
-        f"customer_id={customer_id} bank_id={bank_id} status_id={status_id} "
-        f"cart_len={len(cart) if cart else 0} sale_date={sale_date}"
+        "[SaleRouter] finalize_sale customer_id=%s bank_id=%s status_id=%s cart_len=%s sale_date=%s",
+        customer_id,
+        bank_id,
+        status_id,
+        len(cart) if cart else 0,
+        sale_date,
     )
+
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.finalize_sale(customer_id, bank_id, status_id, cart, db, sale_date=sale_date)
+        return await service.finalize_sale(
+            customer_id=customer_id,
+            bank_id=bank_id,
+            status_id=status_id,
+            cart=cart,
+            db=db,
+            sale_date=sale_date,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SaleRouter] finalize_sale error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to finalize sale")
 
 

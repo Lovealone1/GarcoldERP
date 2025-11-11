@@ -31,12 +31,10 @@ class MediaRepository:
             await db.flush()
             return row
         except IntegrityError:
-            # Duplicado por (purchase_id, kind, key) o por key global.
-            # Devuelve el existente para idempotencia.
             existing = await self.get_by_key(db, row.key)
             if existing:
                 return existing
-            raise  # si no es ese conflicto, propaga
+            raise  
 
     async def delete(self, db: AsyncSession, media_id: int) -> None:
         await db.execute(delete(Media).where(Media.id == media_id))
