@@ -52,6 +52,40 @@ class PurchaseService:
         purchase_date: Optional[datetime] = None,
         channel_id: Optional[str] = None,
     ) -> PurchaseDTO:
+        """
+        Create and finalize a purchase from a cart, updating inventory, balances, and transactions.
+
+        Operations:
+        - Resolve status to determine if purchase is credit or cash.
+        - Create a purchase record with initial zero totals.
+        - Normalize and validate cart items into PurchaseItemDTO list.
+        - Validate referenced products and compute total amount.
+        - Bulk insert purchase items.
+        - Increase product stock according to purchased quantities.
+        - For cash purchases:
+            - Decrease bank balance.
+            - Insert a "Pago compra" transaction record.
+        - For credit purchases:
+            - Set purchase balance equal to total.
+        - Build and return a PurchaseDTO with resolved names.
+        - Optionally publish a realtime "purchase created" event.
+
+        Args:
+            supplier_id: Identifier of the supplier for the purchase.
+            bank_id: Identifier of the bank or payment account used.
+            status_id: Identifier of the purchase status (e.g. cash or credit).
+            cart: List of cart items with product_id, quantity, and unit_price.
+            db: Active async database session.
+            purchase_date: Optional explicit purchase datetime. Uses current time if not provided.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            PurchaseDTO representing the created purchase.
+
+        Raises:
+            HTTPException: If any product is not found or cart is invalid.
+            Exception: Propagated if database operations fail (after rollback).
+        """
         async def _run() -> PurchaseDTO:
             status_row = await self.status_repository.get_by_id(
                 status_id,
@@ -212,8 +246,19 @@ class PurchaseService:
     purchase_id: int,
     ) -> List[PurchaseItemDTO]:
         """
-        Normalize/validate the frontend purchase cart and build PurchaseItemDTOs (with purchase_id).
-        Expects keys per item: product_id, quantity, unit_price.
+        Normalize and validate the purchase cart and build PurchaseItemDTOs.
+
+        Ensures each item has valid types and positive quantity and unit_price.
+
+        Args:
+            cart: List of raw cart items with product_id, quantity, and unit_price.
+            purchase_id: Identifier of the purchase to associate items with.
+
+        Returns:
+            List of PurchaseItemDTO with computed totals.
+
+        Raises:
+            HTTPException: If cart is empty or any item has invalid data.
         """
         if not cart:
             raise HTTPException(status_code=400, detail="Cart is empty")
@@ -255,6 +300,19 @@ class PurchaseService:
         return items
     
     async def get_purchase(self, purchase_id: int, db: AsyncSession) -> PurchaseDTO:
+        """
+        Retrieve a single purchase with resolved supplier, bank, and status names.
+
+        Args:
+            purchase_id: Identifier of the purchase to retrieve.
+            db: Active async database session.
+
+        Returns:
+            PurchaseDTO with purchase summary data.
+
+        Raises:
+            HTTPException: If the purchase does not exist.
+        """
         p = await self.purchase_repository.get_by_id(purchase_id, session=db)
         if not p:
             raise HTTPException(status_code=404, detail="Purchase not found")
@@ -283,6 +341,34 @@ class PurchaseService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> None:
+        """
+        Delete a purchase and revert its inventory and financial effects.
+
+        Operations:
+        - Ensure the purchase exists.
+        - Decrease product quantities to revert previously increased stock.
+        - Inspect purchase status:
+            - For credit-like statuses ("compra credito", "compra cancelada"):
+                - For each payment, increase the related bank balance.
+            - For cash ("compra contado"):
+                - Increase the bank balance by the purchase total.
+        - Delete related payments and purchase items.
+        - Delete associated purchase transactions.
+        - Delete the purchase record.
+        - Optionally publish a realtime "purchase deleted" event.
+
+        Args:
+            purchase_id: Identifier of the purchase to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            None
+
+        Raises:
+            HTTPException: If the purchase does not exist.
+            Exception: Propagated if database operations fail (after rollback).
+        """
         async def _run() -> int:
             p = await self.purchase_repository.get_by_id(
                 purchase_id,
@@ -384,6 +470,25 @@ class PurchaseService:
                 )
 
     async def list_purchases(self, page: int, db: AsyncSession) -> PurchasePageDTO:
+        """
+        List paginated purchases with resolved relation names.
+
+        Uses PAGE_SIZE for page size and returns pagination metadata.
+
+        Args:
+            page: Page number to retrieve (1-based).
+            db: Active async database session.
+
+        Returns:
+            PurchasePageDTO containing:
+                - items: List of PurchaseDTO.
+                - page: Current page.
+                - page_size: Items per page.
+                - total: Total number of purchases.
+                - total_pages: Total number of pages.
+                - has_next: True if there is a next page.
+                - has_prev: True if there is a previous page.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
@@ -419,7 +524,24 @@ class PurchaseService:
 
     async def list_items(self, purchase_id: int, db: AsyncSession) -> List[PurchaseItemViewDTO]:
         """
-        Return purchase items for visualization: product_reference, quantity, unit_price, total, and purchase id.
+        List items of a given purchase for visualization.
+
+        Ensures the purchase exists, then returns items including:
+        - Product reference.
+        - Quantity.
+        - Unit price.
+        - Total.
+        - Purchase identifier.
+
+        Args:
+            purchase_id: Identifier of the purchase whose items will be listed.
+            db: Active async database session.
+
+        Returns:
+            List of PurchaseItemViewDTO representing the purchase items.
+
+        Raises:
+            HTTPException: If the purchase does not exist.
         """
         async with db.begin():
             p = await self.purchase_repository.get_by_id(purchase_id, session=db)

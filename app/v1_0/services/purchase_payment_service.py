@@ -42,10 +42,38 @@ class PurchasePaymentService:
         channel_id: Optional[str] = None,
     ) -> PurchasePaymentDTO:
         """
-        Register a payment for a credit purchase.
-        Emits realtime events after commit:
-        - purchase_payment:created
-        - purchase:updated
+        Register a payment for a credit purchase and update balances.
+
+        Operations:
+        - Validate that the purchase exists.
+        - Validate that the purchase is a credit purchase ("compra credito").
+        - Validate payment amount against the current purchase balance.
+        - Validate that the source bank exists and has sufficient balance.
+        - Create a purchase payment record.
+        - Decrease the purchase balance.
+        - If the balance reaches zero, update status to "compra cancelada" when available.
+        - Decrease the bank balance by the payment amount.
+        - Create a "Pago compra" transaction entry.
+        - After commit, optionally emit realtime events:
+          - purchase_payment:created
+          - purchase:updated
+
+        Args:
+            payload: Data for the purchase payment (purchase_id, bank_id, amount).
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            PurchasePaymentDTO representing the created payment.
+
+        Raises:
+            HTTPException:
+                - If the purchase does not exist.
+                - If the purchase is not a credit purchase.
+                - If the payment amount is invalid or exceeds the pending balance.
+                - If the bank does not exist or has insufficient balance.
+            Exception:
+                - Propagated if any database operation fails (after rollback).
         """
         async def _run() -> tuple[PurchasePaymentDTO, int]:
             purchase = await self.purchase_repository.get_by_id(
@@ -210,10 +238,33 @@ class PurchasePaymentService:
         channel_id: Optional[str] = None,
     ) -> bool:
         """
-        Delete a purchase payment and restore balances.
-        Emits realtime events after commit:
-        - purchase_payment:deleted
-        - purchase:updated
+        Delete a purchase payment and restore related balances.
+
+        Operations:
+        - Ensure the payment exists; return False if not found.
+        - Ensure associated purchase exists.
+        - If purchase status is "compra cancelada", switch it back to "compra credito" when possible.
+        - Increase the purchase balance by the payment amount.
+        - Increase the bank balance by the payment amount.
+        - Delete the purchase payment record.
+        - Delete the associated "Pago compra" transaction.
+        - After commit, optionally emit realtime events:
+          - purchase_payment:deleted
+          - purchase:updated
+
+        Args:
+            payment_id: Identifier of the payment to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            True if the payment existed and was deleted, False if no payment was found.
+
+        Raises:
+            HTTPException:
+                - If the associated purchase does not exist.
+            Exception:
+                - Propagated if any database operation fails (after rollback).
         """
         async def _run() -> tuple[bool, Optional[int]]:
             payment = await self.purchase_payment_repository.get_by_id(
@@ -325,7 +376,20 @@ class PurchasePaymentService:
         self, purchase_id: int, db: AsyncSession
     ) -> List[PurchasePaymentViewDTO]:
         """
-        Return all payments made for a purchase as view DTOs.
+        List all payments made for a given purchase as view-friendly DTOs.
+
+        For each payment:
+        - Resolves and caches the bank name.
+        - Includes the current remaining balance of the purchase.
+        - Exposes the paid amount and creation timestamp.
+
+        Args:
+            purchase_id: Identifier of the purchase whose payments will be listed.
+            db: Active async database session.
+
+        Returns:
+            List of PurchasePaymentViewDTO for all payments of the given purchase.
+            Returns an empty list if no payments exist.
         """
         payments = await self.purchase_payment_repository.list_by_purchase(purchase_id, session=db)
         if not payments:
