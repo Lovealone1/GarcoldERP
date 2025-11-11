@@ -1,26 +1,22 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from dependency_injector.wiring import inject, Provide
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, WebSocketException
+from app.core.realtime import manager
+from app.core.security.realtime_auth import get_ws_identity, build_channel_id
+from app.core.logger import logger
 
-from app.app_containers import ApplicationContainer
-from app.core.realtime import ConnectionManager
-from app.core.security.realtime_auth import get_ws_identity, build_channel_id, WsIdentity
-
-router = APIRouter(
-    prefix="/ws",
-    tags=["Realtime"],
-)
-
+router = APIRouter(prefix="/v1/ws", tags=["Realtime"])
 
 @router.websocket("/realtime")
-@inject
-async def realtime_websocket(
-    websocket: WebSocket,
-    identity: WsIdentity = Depends(get_ws_identity),
-    manager: ConnectionManager = Depends(
-        Provide[ApplicationContainer.api_container.realtime_manager]
-    ),
-) -> None:
+async def websocket_realtime(websocket: WebSocket):
+    try:
+        identity = await get_ws_identity(websocket)
+    except WebSocketException as e:
+        await websocket.close(code=e.code)
+        return
+
     channel_id = build_channel_id(identity)
+    if not channel_id:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
     await manager.connect(channel_id, websocket)
 
@@ -29,5 +25,6 @@ async def realtime_websocket(
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(channel_id, websocket)
-    except Exception:
+    except Exception as e:
         manager.disconnect(channel_id, websocket)
+        await websocket.close()

@@ -1,79 +1,68 @@
-from fastapi import WebSocket, HTTPException, status, Depends
-from dependency_injector.wiring import inject
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import WebSocket, status, WebSocketException
+from sqlalchemy import select
 
-from app.storage.database.db_connector import get_db
-from .jwt import verify_token
-from .deps import auth_deps
+from app.storage.database import async_session
+from app.core.logger import logger
+from app.core.security.jwt import verify_token
+from app.v1_0.models import User
+from app.core.security.deps import AuthContext
 
 class WsIdentity:
-    """
-    Represents the authenticated WebSocket identity.
-    """
-
-    def __init__(self, sub: str, user_id: str, tenant_id: str | None = None) -> None:
+    def __init__(self, sub: str, tenant_id: str | None, user_id: str | None):
         self.sub = sub
-        self.user_id = user_id
         self.tenant_id = tenant_id
+        self.user_id = user_id
 
-@inject
-async def get_ws_identity(
-    websocket: WebSocket,
-    db: AsyncSession = Depends(get_db),
-) -> WsIdentity:
-    """
-    Resolves and validates the WebSocket identity using the same JWT
-    verification logic as HTTP requests.
 
-    Args:
-        websocket: Incoming WebSocket connection.
-        db: Async database session.
-
-    Returns:
-        WsIdentity with subject, user identifier, and optional tenant identifier.
-
-    Raises:
-        HTTPException 401 if token is missing or invalid.
-    """
+async def get_ws_identity(websocket: WebSocket) -> WsIdentity:
     token = websocket.query_params.get("token")
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing token",
+        logger.warning("[WS_AUTH] missing token url=%s", websocket.url)
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Missing token",
         )
 
     try:
         claims = await verify_token(token)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+    except Exception as e:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Invalid token",
         )
 
     sub = claims.get("sub")
     if not sub:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Missing sub",
         )
 
-    user = await auth_deps.current_user(db, authorization=f"Bearer {token}")
+    async with async_session() as db:
+        user = await db.scalar(select(User).where(User.external_sub == sub))
+
+    if not user:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="User not provisioned",
+        )
 
     tenant_id = getattr(user, "tenant_id", None)
-    user_identifier = str(getattr(user, "external_sub", None) or user.id)
+    user_pk = getattr(user, "external_sub", None) or getattr(user, "id", None)
 
-    return WsIdentity(sub=sub, user_id=user_identifier, tenant_id=tenant_id)
+    ident = WsIdentity(
+        sub=sub,
+        tenant_id=str(tenant_id) if tenant_id else None,
+        user_id=str(user_pk) if user_pk else None,
+    )
+    return ident
+
+
+
 
 def build_channel_id(identity: WsIdentity) -> str:
-    """
-    Builds the logical channel identifier from the resolved identity.
+    return "global"
 
-    Args:
-        identity: WsIdentity instance.
 
-    Returns:
-        Channel identifier string.
-    """
-    if identity.tenant_id:
-        return str(identity.tenant_id)
-    return identity.user_id
+def build_channel_id_from_auth(ctx: AuthContext) -> str:
+    return "global"

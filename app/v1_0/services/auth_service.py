@@ -37,27 +37,53 @@ class AuthService:
         logger.debug("[AuthService] ensure_user sub=%s", sub)
 
         async def _upsert() -> tuple[Any, Optional[int]]:
-            u = await self.user_repository.get_by_sub(sub, db)
-            if u:
-                out = await self.user_repository.upsert_basics(u, email, display_name, db)
+            existing = await self.user_repository.get_by_sub(sub, db)
+            if existing:
+                out = await self.user_repository.upsert_basics(existing, email, display_name, db)
                 rid = out.role_id
-            else:
-                await self.user_repository.advisory_xact_lock(db)
+                return out, rid
 
-                u = await self.user_repository.get_by_sub(sub, db)
-                if u:
-                    out = u
-                    rid = out.role_id
-                else:
-                    total = await self.user_repository.count_all(db)
-                    default_role = "admin" if total == 0 else "user"
-                    rid = await self.role_repository.get_id_by_code(default_role, db)
-                    if not rid:
-                        raise ValueError(f"role_not_found:{default_role}")
+            await self.user_repository.advisory_xact_lock(db)
 
-                    out = await self.user_repository.create_with_role(
-                        sub=sub, email=email, name=display_name, role_id=rid, session=db
+            existing = await self.user_repository.get_by_sub(sub, db)
+            if existing:
+                out = await self.user_repository.upsert_basics(existing, email, display_name, db)
+                rid = out.role_id
+                return out, rid
+
+            existing_by_email = None
+            if email:
+                existing_by_email = await self.user_repository.get_by_email(email, db)
+
+            if existing_by_email:
+                if getattr(existing_by_email, "external_sub", None) != sub:
+                    await self.user_repository.set_sub(
+                        existing_by_email,
+                        sub=sub,
+                        session=db,
                     )
+                out = await self.user_repository.upsert_basics(
+                    existing_by_email,
+                    email,
+                    display_name,
+                    db,
+                )
+                rid = out.role_id
+                return out, rid
+
+            total = await self.user_repository.count_all(db)
+            default_role = "admin" if total == 0 else "user"
+            rid = await self.role_repository.get_id_by_code(default_role, db)
+            if not rid:
+                raise ValueError(f"role_not_found:{default_role}")
+
+            out = await self.user_repository.create_with_role(
+                sub=sub,
+                email=email,
+                name=display_name,
+                role_id=rid,
+                session=db,
+            )
             return out, rid
 
         try:
@@ -77,7 +103,11 @@ class AuthService:
                 need_sync = (sb_role != role_code) or (sb_role_id != rid)
 
                 if need_sync:
-                    await self.supabase.set_role_metadata_dynamic(user_id=sub, db=db, role_id=rid)
+                    await self.supabase.set_role_metadata_dynamic(
+                        user_id=sub,
+                        db=db,
+                        role_id=rid,
+                    )
             except Exception as e:
                 logger.warning("[AuthService] supabase_role_sync_skip sub=%s err=%s", sub, e)
 

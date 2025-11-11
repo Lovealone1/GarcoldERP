@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from inspect import isawaitable
-from typing import cast
+from typing import cast, List
 
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,17 +10,14 @@ from app.core.logger import logger
 from app.v1_0.v1_router import v1_router
 from app.app_containers import ApplicationContainer
 from app.storage.database import async_session, dispose_engine
-
+from app.v1_0.routers import realtime_router
 API_PREFIX = getattr(settings, "API_PREFIX", "/api")
 
-
-def _cors_origins() -> list[str]:
-    v = getattr(settings, "CORS_ORIGINS", ["*"])
-    if isinstance(v, str):
-        if v.strip() == "*":
-            return ["*"]
-        return [s.strip() for s in v.split(",") if s.strip()]
-    return list(v)
+@property
+def CORS_ORIGINS_LIST(self) -> List[str]:
+    return ["*"] if self.CORS_ORIGINS.strip() == "*" else [
+        o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()
+    ]
 
 
 @asynccontextmanager
@@ -63,10 +60,14 @@ def create_app() -> FastAPI:
 
     app.state.container = container
 
-    origins = _cors_origins()
-    allow_credentials = getattr(settings, "CORS_ALLOW_CREDENTIALS", True)
+    origins = settings.CORS_ORIGINS_LIST
+    allow_credentials = True
+
     if "*" in origins:
+        # wildcard + credenciales no legal en CORS
         allow_credentials = False
+
+    logger.info("CORS origins=%s allow_credentials=%s", origins, allow_credentials)
 
     app.add_middleware(
         CORSMiddleware,
@@ -91,6 +92,8 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(base_router)
+    app.include_router(realtime_router.router, prefix=API_PREFIX)
+
     return app
 
 

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
+from app.core.realtime import ConnectionManager
 from app.v1_0.entities import (
     SaleDTO,
     SaleItemDTO,
@@ -22,7 +23,8 @@ from app.v1_0.repositories import (
     BankRepository,
     SalePaymentRepository,
 )
-from app.v1_0.services.transaction_service import TransactionService
+from app.v1_0.services import TransactionService
+from app.core.realtime import publish_realtime_event
 from app.v1_0.schemas import (
     SaleInsert,
     SaleItemCreate,
@@ -44,6 +46,7 @@ class SaleService:
         bank_repository: BankRepository,
         sale_payment_repository: SalePaymentRepository,
         transaction_service: TransactionService,
+        realtime_manager: ConnectionManager,
     ) -> None:
         self.sale_repository = sale_repository
         self.sale_item_repository = sale_item_repository
@@ -55,6 +58,7 @@ class SaleService:
         self.bank_repository = bank_repository
         self.sale_payment_repository = sale_payment_repository
         self.transaction_service = transaction_service
+        self._realtime_manager = realtime_manager
         self.PAGE_SIZE = 8
         self._tx_type_pago_venta_id: Optional[int] = None
 
@@ -193,15 +197,16 @@ class SaleService:
         return profit_items
 
     async def finalize_sale(
-    self,
-    customer_id: int,
-    bank_id: int,
-    status_id: int,
-    cart: List[Dict[str, Any]],
-    db: AsyncSession,
-    sale_date: Optional[datetime] = None,  
+        self,
+        customer_id: int,
+        bank_id: int,
+        status_id: int,
+        cart: List[Dict[str, Any]],
+        db: AsyncSession,
+        sale_date: Optional[datetime] = None,
+        channel_id: Optional[str] = None,
     ) -> SaleDTO:
-        async with db.begin():
+        async def _run() -> SaleDTO:
             is_credit = await self._is_credit_status(status_id, db)
 
             sale = await self.sale_repository.create_sale(
@@ -211,7 +216,7 @@ class SaleService:
                     total=0.0,
                     status_id=status_id,
                     remaining_balance=0.0,
-                    created_at=sale_date or datetime.now(),  
+                    created_at=sale_date or datetime.now(),
                 ),
                 session=db,
             )
@@ -227,6 +232,7 @@ class SaleService:
             db.add(sale)
 
             await self._decrease_inventory(items, db)
+
             await self._adjust_balances_and_transaction(
                 is_credit=is_credit,
                 customer_id=customer_id,
@@ -236,27 +242,73 @@ class SaleService:
                 db=db,
             )
 
-            profit_items = await self._compute_profit_items(sale_id=sale.id, items=items, session=db)
-            await self.profit_item_repository.bulk_insert_details(profit_items, session=db)
-            total_profit = sum(pi.total_profit for pi in profit_items)
-            await self.profit_repository.create_profit(
-                ProfitCreate(sale_id=sale.id, profit=total_profit), session=db
+            profit_items = await self._compute_profit_items(
+                sale_id=sale.id,
+                items=items,
+                session=db,
+            )
+            await self.profit_item_repository.bulk_insert_details(
+                profit_items,
+                session=db,
             )
 
-            customer = await self.customer_repository.get_by_id(customer_id, session=db)
-            bank = await self.bank_repository.get_by_id(bank_id, session=db)
-            status_row = await self.status_repository.get_by_id(status_id, session=db)
+            total_profit = sum(pi.total_profit for pi in profit_items)
+            await self.profit_repository.create_profit(
+                ProfitCreate(sale_id=sale.id, profit=total_profit),
+                session=db,
+            )
+
+            customer = await self.customer_repository.get_by_id(
+                customer_id,
+                session=db,
+            )
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
+            status_row = await self.status_repository.get_by_id(
+                status_id,
+                session=db,
+            )
             status_name = status_row.name if status_row else "Desconocido"
 
-        return SaleDTO(
-            id=sale.id,
-            customer=customer.name if customer else "Desconocido",
-            bank=bank.name if bank else "Desconocido",
-            status=status_name,
-            total=total_amount,
-            remaining_balance=new_remaining,
-            created_at=sale.created_at,
-        )
+            return SaleDTO(
+                id=sale.id,
+                customer=customer.name if customer else "Desconocido",
+                bank=bank.name if bank else "Desconocido",
+                status=status_name,
+                total=total_amount,
+                remaining_balance=new_remaining,
+                created_at=sale.created_at,
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            dto = await _run()
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="sale",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+                logger.info("[SaleService] Realtime sale created event published: sale_id=%s", dto.id)
+            except Exception as e:
+                logger.error(
+                    "[SaleService] realtime publish failed: %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
 
     async def get_sale(self, sale_id: int, db: AsyncSession) -> SaleDTO:
         sale = await self.sale_repository.get_by_id(sale_id, session=db)

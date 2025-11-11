@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Set, Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, Header, HTTPException, status
 
+from app.storage.database.db_connector import get_db
 from app.core.security.jwt import verify_token
 from app.v1_0.models import User,Role
 
@@ -60,3 +62,28 @@ class AuthDeps:
         return _check
 
 auth_deps = AuthDeps()
+
+async def get_auth_context(
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+) -> AuthContext:
+    """
+    Resolves authenticated context (user, role, permissions) from the Authorization header.
+
+    Args:
+        db: Async database session.
+        authorization: Authorization header with Bearer token.
+
+    Returns:
+        AuthContext with user, role code, and permissions.
+
+    Raises:
+        HTTPException 401 if token or user are invalid.
+    """
+    try:
+        return await auth_deps.context(db, authorization)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
