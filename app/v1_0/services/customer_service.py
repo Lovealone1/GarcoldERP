@@ -1,13 +1,14 @@
-from typing import List
+from typing import List, Optional
 from math import ceil
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logger import logger
+from app.core.realtime import publish_realtime_event
 from app.v1_0.schemas import CustomerCreate, CustomerUpdate, TransactionCreate
 from app.v1_0.repositories import CustomerRepository, BankRepository
-from .transaction_service import TransactionService
 from app.v1_0.entities import CustomerDTO, CustomerPageDTO
-from app.core.logger import logger
+from .transaction_service import TransactionService
 
 class CustomerService:
     def __init__(self, 
@@ -25,26 +26,62 @@ class CustomerService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
         return c
 
-    async def create(self, payload: CustomerCreate, db: AsyncSession) -> CustomerDTO:
-        logger.info(f"[CustomerService] Creating customer: {payload.model_dump()}")
-        try:
-            async with db.begin():
-                c = await self.customer_repository.create_customer(payload, db)
-            logger.info(f"[CustomerService] Customer created ID={c.id}")
+    async def create(
+        self,
+        payload: CustomerCreate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> CustomerDTO:
+        logger.info("[CustomerService] Creating customer: %s", payload.model_dump())
+
+        async def _run() -> CustomerDTO:
+            c = await self.customer_repository.create_customer(payload, db)
+            logger.info("[CustomerService] Customer created ID=%s", c.id)
             return CustomerDTO(
-                id=c.id, 
-                tax_id=c.tax_id, 
-                name=c.name, 
+                id=c.id,
+                tax_id=c.tax_id,
+                name=c.name,
                 address=c.address,
-                city=c.city, 
-                phone=c.phone, 
+                city=c.city,
+                phone=c.phone,
                 email=c.email,
                 created_at=c.created_at,
                 balance=c.balance,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except Exception as e:
-            logger.error(f"[CustomerService] Create failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to create customer")
+            await db.rollback()
+            logger.error("[CustomerService] Create failed: %s", e, exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create customer",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+                logger.info(
+                    "[CustomerService] RT customer created published: id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[CustomerService] RT publish failed (create): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
 
     async def get(self, customer_id: int, db: AsyncSession) -> CustomerDTO:
         logger.debug(f"[CustomerService] Get customer ID={customer_id}")
@@ -127,90 +164,278 @@ class CustomerService:
             has_prev=page > 1,
         )
 
-    async def update_partial(self, customer_id: int, payload: CustomerUpdate, db: AsyncSession) -> CustomerDTO:
-        logger.info(f"[CustomerService] Update customer ID={customer_id} data={payload.model_dump(exclude_unset=True)}")
-        try:
-            async with db.begin():
-                c = await self.customer_repository.update_customer(customer_id, payload, db)
+    async def update_partial(
+        self,
+        customer_id: int,
+        payload: CustomerUpdate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> CustomerDTO:
+        logger.info(
+            "[CustomerService] Update customer ID=%s data=%s",
+            customer_id,
+            payload.model_dump(exclude_unset=True),
+        )
+
+        async def _run() -> CustomerDTO:
+            c = await self.customer_repository.update_customer(
+                customer_id,
+                payload,
+                db,
+            )
             if not c:
-                raise HTTPException(status_code=404, detail="Customer not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Customer not found.",
+                )
             return CustomerDTO(
-                id=c.id, 
-                tax_id=c.tax_id, 
-                name=c.name, 
+                id=c.id,
+                tax_id=c.tax_id,
+                name=c.name,
                 address=c.address,
-                city=c.city, 
-                phone=c.phone, 
+                city=c.city,
+                phone=c.phone,
                 email=c.email,
-                created_at=c.created_at, 
+                created_at=c.created_at,
                 balance=c.balance,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[CustomerService] Update failed ID={customer_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to update customer")
+            await db.rollback()
+            logger.error(
+                "[CustomerService] Update failed ID=%s: %s",
+                customer_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update customer",
+            )
 
-    async def update_balance(self, customer_id: int, new_balance: float, db: AsyncSession) -> CustomerDTO:
-        logger.info(f"[CustomerService] Update balance ID={customer_id} -> {new_balance}")
-        try:
-            async with db.begin():
-                c = await self.customer_repository.update_balance(customer_id, new_balance, db)
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer",
+                    action="updated",
+                    payload={"id": dto.id},
+                )
+                logger.info(
+                    "[CustomerService] RT customer updated published: id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[CustomerService] RT publish failed (update_partial): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def update_balance(
+        self,
+        customer_id: int,
+        new_balance: float,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> CustomerDTO:
+        logger.info(
+            "[CustomerService] Update balance ID=%s -> %s",
+            customer_id,
+            new_balance,
+        )
+
+        async def _run() -> CustomerDTO:
+            c = await self.customer_repository.update_balance(
+                customer_id,
+                new_balance,
+                db,
+            )
             if not c:
-                raise HTTPException(status_code=404, detail="Customer not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Customer not found.",
+                )
             return CustomerDTO(
-                id=c.id, 
-                tax_id=c.tax_id, 
-                name=c.name, 
+                id=c.id,
+                tax_id=c.tax_id,
+                name=c.name,
                 address=c.address,
-                city=c.city, 
-                phone=c.phone, 
+                city=c.city,
+                phone=c.phone,
                 email=c.email,
-                created_at=c.created_at, 
+                created_at=c.created_at,
                 balance=c.balance,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[CustomerService] Update balance failed ID={customer_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to update balance")
+            await db.rollback()
+            logger.error(
+                "[CustomerService] Update balance failed ID=%s: %s",
+                customer_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update balance",
+            )
 
-    async def delete(self, customer_id: int, db: AsyncSession) -> bool:
-        logger.warning(f"[CustomerService] Delete customer ID={customer_id}")
-        try:
-            async with db.begin():
-                ok = await self.customer_repository.delete_customer(customer_id, db)
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer",
+                    action="updated",
+                    payload={"id": dto.id},
+                )
+                logger.info(
+                    "[CustomerService] RT customer balance update published: id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[CustomerService] RT publish failed (update_balance): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def delete(
+        self,
+        customer_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> bool:
+        logger.warning("[CustomerService] Delete customer ID=%s", customer_id)
+
+        async def _run() -> bool:
+            ok = await self.customer_repository.delete_customer(
+                customer_id,
+                db,
+            )
             if not ok:
-                raise HTTPException(status_code=404, detail="Customer not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Customer not found.",
+                )
             return True
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            ok = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[CustomerService] Delete failed ID={customer_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to delete customer")
+            await db.rollback()
+            logger.error(
+                "[CustomerService] Delete failed ID=%s: %s",
+                customer_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete customer",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer",
+                    action="deleted",
+                    payload={"id": customer_id},
+                )
+                logger.info(
+                    "[CustomerService] RT customer deleted published: id=%s",
+                    customer_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[CustomerService] RT publish failed (delete): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
 
     async def register_simple_balance_payment(
-    self, *, customer_id: int, bank_id: int, amount: float,
-    description: str | None, db: AsyncSession
+        self,
+        *,
+        customer_id: int,
+        bank_id: int,
+        amount: float,
+        description: str | None,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
     ) -> bool:
         if amount <= 0:
-            raise HTTPException(status_code=400, detail="Amount must be > 0")
+            raise HTTPException(
+                status_code=400,
+                detail="Amount must be > 0",
+            )
 
-        customer = await self.customer_repository.get_by_id(customer_id, session=db)
+        customer = await self.customer_repository.get_by_id(
+            customer_id,
+            session=db,
+        )
         if not customer:
-            raise HTTPException(status_code=404, detail="Customer not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found",
+            )
 
-        bank = await self.bank_repository.get_by_id(bank_id, session=db)
+        bank = await self.bank_repository.get_by_id(
+            bank_id,
+            session=db,
+        )
         if not bank:
-            raise HTTPException(status_code=404, detail="Bank not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Bank not found",
+            )
 
         current_balance = float(customer.balance or 0.0)
         if amount > current_balance:
-            raise HTTPException(status_code=422, detail=f"Exceeds balance ({current_balance:.2f})")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Exceeds balance ({current_balance:.2f})",
+            )
 
-        try:
-            await self.customer_repository.update_balance(customer_id, current_balance - amount, db)
-            await self.bank_repository.update_balance(bank_id, float(bank.balance or 0.0) + amount, session=db)
+        async def _run() -> bool:
+            await self.customer_repository.update_balance(
+                customer_id,
+                current_balance - amount,
+                db,
+            )
+            await self.bank_repository.update_balance(
+                bank_id,
+                float(bank.balance or 0.0) + amount,
+                session=db,
+            )
             await self.transaction_service.insert_transaction(
                 TransactionCreate(
                     bank_id=bank_id,
@@ -221,8 +446,56 @@ class CustomerService:
                 ),
                 db=db,
             )
-            await db.commit()
             return True
-        except Exception:
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            ok = await _run()
+            await db.commit()
+        except Exception as e:
             await db.rollback()
-            raise
+            logger.error(
+                "[CustomerService] register_simple_balance_payment failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to register balance payment",
+            )
+
+        if not ok:
+            return False
+
+        if channel_id:
+            try:
+                # Evento específico opcional + actualización de cliente
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer_payment",
+                    action="created",
+                    payload={
+                        "customer_id": customer_id,
+                        "bank_id": bank_id,
+                        "amount": amount,
+                    },
+                )
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="customer",
+                    action="updated",
+                    payload={"id": customer_id},
+                )
+                logger.info(
+                    "[CustomerService] RT simple balance payment published: customer_id=%s",
+                    customer_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[CustomerService] RT publish failed (simple_payment): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
