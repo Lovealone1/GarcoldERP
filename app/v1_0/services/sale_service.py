@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Any, Sequence, Optional
 from math import ceil
 from fastapi import HTTPException
@@ -333,39 +333,125 @@ class SaleService:
             created_at=sale.created_at,
         )
 
-    async def delete_sale(self, sale_id: int, db: AsyncSession) -> None:
-        async with db.begin():
+    async def delete_sale(
+        self,
+        sale_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> None:
+        async def _run() -> None:
             sale = await self.sale_repository.get_by_id(sale_id, session=db)
             if not sale:
                 raise HTTPException(status_code=404, detail="Sale not found")
 
-            items = await self.sale_item_repository.get_by_sale_id(sale_id, session=db)
+            items = await self.sale_item_repository.get_by_sale_id(
+                sale_id,
+                session=db,
+            )
             for it in items:
-                await self.product_repository.increase_quantity(it.product_id, it.quantity, session=db)
+                await self.product_repository.increase_quantity(
+                    it.product_id,
+                    it.quantity,
+                    session=db,
+                )
 
-            status_row = await self.status_repository.get_by_id(sale.status_id, session=db)
+            status_row = await self.status_repository.get_by_id(
+                sale.status_id,
+                session=db,
+            )
             status_name = (status_row.name or "").lower() if status_row else ""
             is_credit_like = status_name in ("venta credito", "venta cancelada")
             is_cash = status_name == "venta contado"
 
-            payments = await self.sale_payment_repository.list_by_sale(sale_id, session=db)
+            payments = await self.sale_payment_repository.list_by_sale(
+                sale_id,
+                session=db,
+            )
 
             if is_credit_like:
                 for p in payments:
-                    await self.bank_repository.decrease_balance(p.bank_id, float(p.amount or 0), session=db)
-                customer = await self.customer_repository.get_by_id(sale.customer_id, session=db)
-                if customer:
-                    new_balance = max(float(customer.balance or 0) - float(sale.total or 0), 0.0)
-                    await self.customer_repository.update_balance(customer.id, new_balance, session=db)
-            elif is_cash:
-                await self.bank_repository.decrease_balance(sale.bank_id, float(sale.total or 0), session=db)
+                    await self.bank_repository.decrease_balance(
+                        p.bank_id,
+                        float(p.amount or 0),
+                        session=db,
+                    )
 
-            await self.sale_payment_repository.delete_by_sale(sale_id, session=db)
-            await self.profit_item_repository.delete_by_sale(sale_id, session=db)
-            await self.profit_repository.delete_by_sale(sale_id, session=db)
-            await self.sale_item_repository.delete_by_sale(sale_id, session=db)
-            await self.transaction_service.delete_sale_transactions(sale_id, db=db)
-            await self.sale_repository.delete_sale(sale_id, session=db)
+                customer = await self.customer_repository.get_by_id(
+                    sale.customer_id,
+                    session=db,
+                )
+                if customer:
+                    new_balance = max(
+                        float(customer.balance or 0)
+                        - float(sale.total or 0),
+                        0.0,
+                    )
+                    await self.customer_repository.update_balance(
+                        customer.id,
+                        new_balance,
+                        session=db,
+                    )
+
+            elif is_cash:
+                await self.bank_repository.decrease_balance(
+                    sale.bank_id,
+                    float(sale.total or 0),
+                    session=db,
+                )
+
+            await self.sale_payment_repository.delete_by_sale(
+                sale_id,
+                session=db,
+            )
+            await self.profit_item_repository.delete_by_sale(
+                sale_id,
+                session=db,
+            )
+            await self.profit_repository.delete_by_sale(
+                sale_id,
+                session=db,
+            )
+            await self.sale_item_repository.delete_by_sale(
+                sale_id,
+                session=db,
+            )
+            await self.transaction_service.delete_sale_transactions(
+                sale_id,
+                db=db,
+            )
+            await self.sale_repository.delete_sale(
+                sale_id,
+                session=db,
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            await _run()
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="sale",
+                    action="deleted",
+                    payload={"id": sale_id},
+                )
+                logger.info(
+                    "[SaleService] Realtime sale deleted event published: sale_id=%s",
+                    sale_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[SaleService] realtime publish failed: %s",
+                    e,
+                    exc_info=True,
+                )
 
     async def list_sales(self, page: int, db: AsyncSession) -> SalePageDTO:
         page_size = self.PAGE_SIZE

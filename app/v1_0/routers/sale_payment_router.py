@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 from typing import Dict, List
 
+from app.core.security.deps import AuthContext, get_auth_context
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
@@ -10,9 +11,9 @@ from app.core.logger import logger
 from app.v1_0.schemas import SalePaymentCreate
 from app.v1_0.entities import SalePaymentDTO, SalePaymentViewDTO
 from app.v1_0.services import SalePaymentService
+from app.core.security.realtime_auth import build_channel_id_from_auth
 
 router = APIRouter(prefix="/sale-payments", tags=["SalePayments"])
-
 
 @router.post(
     "/create",
@@ -24,18 +25,33 @@ router = APIRouter(prefix="/sale-payments", tags=["SalePayments"])
 async def create_sale_payment(
     request: SalePaymentCreate,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: SalePaymentService = Depends(
         Provide[ApplicationContainer.api_container.sale_payment_service]
     ),
 ) -> SalePaymentDTO:
-    logger.info(f"[SalePaymentRouter] create payload={request.model_dump()}")
+    logger.info("[SalePaymentRouter] create payload=%s", request.model_dump())
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create_sale_payment(request, db)
+        return await service.create_sale_payment(
+            payload=request,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SalePaymentRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create sale payment")
+        logger.error(
+            "[SalePaymentRouter] create error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create sale payment",
+        )
+
 
 @router.delete(
     "/{payment_id}",
@@ -47,23 +63,42 @@ async def create_sale_payment(
 async def delete_sale_payment(
     payment_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: SalePaymentService = Depends(
         Provide[ApplicationContainer.api_container.sale_payment_service]
     ),
-):
-    logger.warning(f"[SalePaymentRouter] delete payment_id={payment_id}")
+) -> Dict[str, str]:
+    logger.warning("[SalePaymentRouter] delete payment_id=%s", payment_id)
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete_sale_payment(payment_id=payment_id, db=db)
+        ok = await service.delete_sale_payment(
+            payment_id=payment_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SalePaymentRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete sale payment")
+        logger.error(
+            "[SalePaymentRouter] delete error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete sale payment",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Sale payment not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Sale payment not found",
+        )
 
-    return {"message": f"Sale payment with ID {payment_id} deleted successfully"}
+    return {
+        "message": f"Sale payment with ID {payment_id} deleted successfully"
+    }
 
 @router.get(
     "/by-sale/{sale_id}",

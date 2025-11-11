@@ -92,19 +92,11 @@ async def get_sale(
 async def delete_sale(
     sale_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
 ):
-    logger.warning(f"[SaleRouter] delete_sale id={sale_id}")
-    try:
-        await service.delete_sale(sale_id, db)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[SaleRouter] delete_sale error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete sale")
-
-    return {"message": f"Sale with ID {sale_id} deleted successfully"}
-
+    channel_id = build_channel_id_from_auth(auth_ctx) 
+    await service.delete_sale(sale_id=sale_id, db=db, channel_id=channel_id)
 
 @router.get(
     "",
