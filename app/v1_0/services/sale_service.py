@@ -63,6 +63,15 @@ class SaleService:
         self._tx_type_pago_venta_id: Optional[int] = None
 
     async def _get_pago_venta_type_id(self, db: AsyncSession) -> Optional[int]:
+        """
+        Resolve and cache the transaction type ID for "Pago venta".
+
+        Args:
+            db: Active async database session.
+
+        Returns:
+            The transaction type ID for "Pago venta" if found, otherwise None.
+        """
         if self._tx_type_pago_venta_id is None:
             try:
                 self._tx_type_pago_venta_id = await self.transaction_service.type_repo.get_id_by_name(
@@ -74,6 +83,16 @@ class SaleService:
         return self._tx_type_pago_venta_id
 
     async def _is_credit_status(self, status_id: int, db: AsyncSession) -> bool:
+        """
+        Check if the given status corresponds to a credit sale.
+
+        Args:
+            status_id: Status identifier to evaluate.
+            db: Active async database session.
+
+        Returns:
+            True if the status is "venta credito", otherwise False.
+        """
         status_row = await self.status_repository.get_by_id(status_id, session=db)
         return bool(status_row and status_row.name.lower() == "venta credito")
 
@@ -82,6 +101,21 @@ class SaleService:
         cart: List[Dict[str, Any]],
         sale_id: int,
     ) -> List[SaleItemDTO]:
+        """
+        Build a list of SaleItemDTO from the raw cart payload.
+
+        Validates types and basic constraints for quantity and unit_price.
+
+        Args:
+            cart: List of cart item dictionaries with product_id, quantity, and unit_price.
+            sale_id: Identifier of the sale to associate items with.
+
+        Returns:
+            List of SaleItemDTO representing the cart items.
+
+        Raises:
+            HTTPException: If the cart is empty or any item has invalid data.
+        """
         if not cart:
             raise HTTPException(status_code=400, detail="Cart is empty")
 
@@ -114,6 +148,21 @@ class SaleService:
     async def _validate_stock_and_total(
         self, items: Sequence[SaleItemDTO], db: AsyncSession
     ) -> float:
+        """
+        Validate product stock for all items and compute the sale total.
+
+        For each item, ensures the product exists and available quantity is sufficient.
+
+        Args:
+            items: Sequence of sale item DTOs to validate.
+            db: Active async database session.
+
+        Returns:
+            Total sale amount as a float.
+
+        Raises:
+            HTTPException: If a product does not exist or stock is insufficient.
+        """
         total = 0.0
         for it in items:
             product = await self.product_repository.get_by_id(it.product_id, session=db)
@@ -126,6 +175,17 @@ class SaleService:
         return total
 
     async def _insert_items(self, sale_id: int, items: Sequence[SaleItemDTO], db: AsyncSession) -> None:
+        """
+        Persist sale items for a given sale.
+
+        Args:
+            sale_id: Identifier of the sale associated with the items.
+            items: Sequence of SaleItemDTO to be inserted.
+            db: Active async database session.
+
+        Returns:
+            None
+        """
         rows = [
             SaleItemCreate(
                 sale_id=sale_id,
@@ -138,12 +198,39 @@ class SaleService:
         await self.sale_item_repository.bulk_insert_items(rows, session=db)
 
     async def _decrease_inventory(self, items: Sequence[SaleItemDTO], db: AsyncSession) -> None:
+        """
+        Decrease product inventory based on sale items.
+
+        Args:
+            items: Sequence of SaleItemDTO representing sold items.
+            db: Active async database session.
+
+        Returns:
+            None
+        """
         for it in items:
             await self.product_repository.decrease_quantity(it.product_id, it.quantity, session=db)
 
     async def _adjust_balances_and_transaction(
         self, *, is_credit: bool, customer_id: int, bank_id: int, amount: float, sale_id: int, db: AsyncSession
     ) -> None:
+        """
+        Adjust customer or bank balances and create a transaction when applicable.
+
+        For credit sales, increases the customer's outstanding balance.
+        For cash sales, increases the bank balance and records a payment transaction.
+
+        Args:
+            is_credit: True if sale is credit-based, False if cash/paid.
+            customer_id: Customer identifier associated with the sale.
+            bank_id: Bank identifier used for the sale.
+            amount: Total sale amount.
+            sale_id: Identifier of the sale.
+            db: Active async database session.
+
+        Returns:
+            None
+        """
         if is_credit:
             customer = await self.customer_repository.get_by_id(customer_id, session=db)
             if customer:
@@ -173,6 +260,23 @@ class SaleService:
         items: List[SaleItemDTO],
         session: AsyncSession,
     ) -> List[SaleProfitDetailCreate]:
+        """
+        Compute per-item profit details for a sale.
+
+        Uses each product's purchase price and the sale item unit price
+        to determine unit and total profit.
+
+        Args:
+            sale_id: Identifier of the sale.
+            items: List of SaleItemDTO representing sale items.
+            session: Active async database session.
+
+        Returns:
+            List of SaleProfitDetailCreate containing profit breakdown per item.
+
+        Raises:
+            HTTPException: If a referenced product does not exist.
+        """
         profit_items: List[SaleProfitDetailCreate] = []
         for it in items:
             product = await self.product_repository.get_by_id(it.product_id, session=session)
@@ -206,6 +310,35 @@ class SaleService:
         sale_date: Optional[datetime] = None,
         channel_id: Optional[str] = None,
     ) -> SaleDTO:
+        """
+        Create and finalize a sale from a cart, adjusting stock, balances, profits, and transactions.
+
+        Executes all operations in a database transaction:
+        - Creates the sale record.
+        - Builds and validates sale items.
+        - Validates stock and computes total.
+        - Persists items.
+        - Updates remaining balance for credit sales.
+        - Updates bank or customer balances and creates a transaction when needed.
+        - Computes and persists profit details and aggregated profit.
+        - Optionally publishes a realtime "sale created" event.
+
+        Args:
+            customer_id: Identifier of the customer making the purchase.
+            bank_id: Identifier of the bank or payment account used.
+            status_id: Identifier of the sale status (e.g. cash or credit).
+            cart: List of cart items with product_id, quantity, and unit_price.
+            db: Active async database session.
+            sale_date: Optional explicit sale datetime. Uses current time if not provided.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            SaleDTO with summary information for the created sale.
+
+        Raises:
+            HTTPException: On validation errors or inconsistent state.
+            Exception: Propagated if database operations fail (after rollback).
+        """
         async def _run() -> SaleDTO:
             is_credit = await self._is_credit_status(status_id, db)
 
@@ -311,6 +444,19 @@ class SaleService:
         return dto
 
     async def get_sale(self, sale_id: int, db: AsyncSession) -> SaleDTO:
+        """
+        Retrieve a single sale with resolved customer, bank, and status names.
+
+        Args:
+            sale_id: Identifier of the sale to retrieve.
+            db: Active async database session.
+
+        Returns:
+            SaleDTO with sale summary data.
+
+        Raises:
+            HTTPException: If the sale does not exist.
+        """
         sale = await self.sale_repository.get_by_id(sale_id, session=db)
         if not sale:
             raise HTTPException(status_code=404, detail="Sale not found")
@@ -339,6 +485,28 @@ class SaleService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> None:
+        """
+        Delete a sale and fully revert its financial and inventory impact.
+
+        Steps:
+        - Restore product stock from sale items.
+        - Adjust bank and customer balances depending on sale status and payments.
+        - Delete related payments, profit details, profit records, sale items, and transactions.
+        - Delete the sale record itself.
+        - Optionally publish a realtime "sale deleted" event.
+
+        Args:
+            sale_id: Identifier of the sale to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            None
+
+        Raises:
+            HTTPException: If the sale does not exist.
+            Exception: Propagated if database operations fail (after rollback).
+        """
         async def _run() -> None:
             sale = await self.sale_repository.get_by_id(sale_id, session=db)
             if not sale:
@@ -454,6 +622,18 @@ class SaleService:
                 )
 
     async def list_sales(self, page: int, db: AsyncSession) -> SalePageDTO:
+        """
+        List paginated sales with resolved relation names.
+
+        Uses PAGE_SIZE as page size and computes basic pagination metadata.
+
+        Args:
+            page: Page number to retrieve (1-based).
+            db: Active async database session.
+
+        Returns:
+            SalePageDTO containing the list of SaleDTO items and pagination info.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
@@ -489,7 +669,20 @@ class SaleService:
 
     async def list_items(self, sale_id: int, db: AsyncSession) -> List[SaleItemViewDTO]:
         """
-        Return sale items for visualization: product_reference, quantity, price, total, and sale id.
+        List visualizable items of a given sale with product data.
+
+        Ensures the sale exists, then returns items including product reference,
+        description, quantity, unit price, and total.
+
+        Args:
+            sale_id: Identifier of the sale whose items will be listed.
+            db: Active async database session.
+
+        Returns:
+            List of SaleItemViewDTO representing the sale items.
+
+        Raises:
+            HTTPException: If the sale does not exist.
         """
         async with db.begin():
             sale = await self.sale_repository.get_by_id(sale_id, session=db)
