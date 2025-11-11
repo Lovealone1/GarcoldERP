@@ -3,7 +3,7 @@ import os, sys, asyncio, logging, time, tempfile, re, subprocess, glob
 from pathlib import Path
 from shutil import which
 
-from playwright.sync_api import sync_playwright  # sigue siendo el plan A
+from playwright.sync_api import sync_playwright  
 from app.core.settings import settings
 
 log = logging.getLogger("pdf")
@@ -18,24 +18,18 @@ class PdfRenderer:
     def __init__(self, base_url: Optional[str] = None) -> None:
         self.base_url = (base_url or settings.FRONTEND_URL).rstrip("/")
 
-    # -------------------- helpers --------------------
-
     def _find_system_chromium(self) -> Optional[str]:
-        # 1) override por env
         env_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or os.environ.get("CHROME_BIN")
         if env_path and Path(env_path).exists():
             return env_path
-        # 2) PATH estándar
         for name in ("chromium", "chromium-browser", "google-chrome", "chrome"):
             p = which(name)
             if p:
                 return p
-        # 3) ruta Nix: /nix/store/<hash>-chromium-*/bin/chromium
         candidates = sorted(glob.glob("/nix/store/*-chromium-*/bin/chromium"))
         for p in candidates:
             if Path(p).exists():
                 return p
-        # 4) otras rutas comunes
         for p in ("/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"):
             if Path(p).exists():
                 return p
@@ -67,14 +61,12 @@ class PdfRenderer:
             try: tmp_pdf.unlink(missing_ok=True)
             except Exception: pass
 
-    # -------------------- público --------------------
-
     async def render_invoice_pdf(
         self,
         sale_id: int,
         path: str = "/comercial/ventas/facturas/{sale_id}",
         pdf_options: Optional[Dict[str, Any]] = None,
-        extra_query: str = "print=1",  # tu UI debe aplicar @media print
+        extra_query: str = "print=1",  
         left_mm: float = 22.0,
         right_mm: float = 0.0,
         top_mm: float = 0.0,
@@ -108,11 +100,9 @@ class PdfRenderer:
         """
 
         def _do_sync() -> bytes:
-            # Plan A: Playwright si hay navegador utilizable
             try:
-                from playwright.sync_api import Browser  # type: ignore
+                from playwright.sync_api import Browser  
                 with sync_playwright() as p:
-                    # Intento 1: Chromium sistema con Playwright
                     exec_path = self._find_system_chromium()
                     if exec_path:
                         try:
@@ -122,7 +112,6 @@ class PdfRenderer:
                             browser = None
                     else:
                         browser = None
-                    # Intento 2: bundle de Playwright
                     if browser is None:
                         browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu"])
                     ctx = browser.new_context(locale="es-CO")
@@ -153,7 +142,6 @@ class PdfRenderer:
             except Exception as e:
                 log.warning("[PdfRenderer] Playwright no disponible (%s). Uso fallback CLI.", e)
 
-            # Plan B: Chromium CLI
             return self._render_via_cli(url)
 
         return await asyncio.to_thread(_do_sync)

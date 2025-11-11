@@ -3,10 +3,9 @@ from sqlalchemy import Select, select, func, insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# --- los modelos deben exponer .id ---
 @runtime_checkable
 class HasId(Protocol):
-    id: Any  # columna PK
+    id: Any  
 
 ModelT = TypeVar("ModelT", bound=HasId)
 

@@ -52,7 +52,6 @@ class ImportService:
 
         mapped, _ = HeaderMapper(schema).apply(rows)
 
-        # --- DEDUPE IN-FILE POR CLAVE ESPECÍFICA ---
         key_field = (
             "tax_id" if opts.entity in ("customers", "suppliers")
             else "reference"
@@ -104,7 +103,6 @@ class ImportService:
             return read_xlsx(content, sheet=opts.sheet, header_row=opts.header_row)
         raise HTTPException(status_code=415, detail="Solo .csv o .xlsx")
 
-    # --- Helper: elimina duplicados dentro del archivo por campo clave ---
     def _dedupe_in_file(self, rows: List[Dict[str, Any]], key_field: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Mantiene la primera fila por cada valor no vacío de `key_field`.
@@ -121,7 +119,7 @@ class ImportService:
             key = None if raw is None else str(raw).strip()
             if not key:
                 empty_keys += 1
-                out.append(r)          # no dedupe cuando está vacío
+                out.append(r)          
                 continue
             norm = key.lower()
             if norm in seen:

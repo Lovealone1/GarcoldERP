@@ -92,7 +92,6 @@ class ProfitService:
                 reference = getattr(prod, "reference", None) if prod else None
                 description = getattr(prod, "description", None) if prod else None
 
-                # Safe compute (works even if DB has generated column)
                 try:
                     unit_profit = float(r.sale_price) - float(r.purchase_price)
                     total_profit = unit_profit * int(r.quantity)

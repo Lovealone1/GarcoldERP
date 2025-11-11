@@ -1,5 +1,3 @@
-# app/core/realtime.py
-
 from typing import Dict, Set, Any
 from fastapi import WebSocket
 from app.core.logger import logger

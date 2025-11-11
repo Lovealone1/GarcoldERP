@@ -200,7 +200,7 @@ class ProductRepository(BaseRepository[Product]):
                 Product.description.label("description"),
                 qty_sum.label("quantity_sold"),
                 Product.purchase_price.label("purchase_price"),
-                func.coalesce(avg_unit_price, 0).label("sale_price"),  # ← desde sale_item.unit_price
+                func.coalesce(avg_unit_price, 0).label("sale_price"),  
             )
             .join(SaleItem, SaleItem.product_id == Product.id)
             .join(Sale, Sale.id == SaleItem.sale_id)

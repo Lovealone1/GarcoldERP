@@ -91,7 +91,6 @@ async def list_roles(
 ) -> List[RoleDTO]:
     return await svc.list_roles(db)
 
-# router
 @router.get("/permissions", response_model=list[PermissionDTO], summary="List permissions catalog")
 @inject
 async def list_permissions(

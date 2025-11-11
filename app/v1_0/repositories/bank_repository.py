@@ -16,7 +16,7 @@ class BankRepository(BaseRepository[Bank]):
 
     async def create_bank(self, dto: BankCreate, session: AsyncSession) -> Bank:
         bank = Bank(**dto.model_dump())
-        await self.add(bank, session)  # flush/refresh inside BaseRepository.add()
+        await self.add(bank, session)  
         return bank
 
     async def update_balance(

@@ -4,11 +4,11 @@ from typing import Optional, Any, Dict
 
 class InviteUserIn(BaseModel):
     email: EmailStr
-    redirect_to: Optional[str] = None  # URL para flujo de invitación
+    redirect_to: Optional[str] = None  
 
 class CreateUserIn(BaseModel):
     email: EmailStr
-    password: str                     # requerido en creación directa
+    password: str                   
     user_metadata: Optional[Dict[str, Any]] = None
     app_metadata: Optional[Dict[str, Any]] = None
 

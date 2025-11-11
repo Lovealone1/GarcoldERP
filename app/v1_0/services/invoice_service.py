@@ -48,7 +48,7 @@ class InvoiceService:
         if dt is None:
             return None
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)  # asume UTC si viene naive
+            dt = dt.replace(tzinfo=timezone.utc)  
         return dt.astimezone(ZoneInfo(tz)).strftime(fmt)
 
     async def generate_from_sale(self, sale_id: int, db: AsyncSession) -> SaleInvoiceDTO:
@@ -78,7 +78,6 @@ class InvoiceService:
         status_row = await self.status_repository.get_by_id(sale.status_id, session=db)
         status_name = getattr(status_row, "name", "Desconocido") if status_row else "Desconocido"
 
-        # Items (with product description)
         items_model = await self.sale_item_repository.get_by_sale_id(sale.id, session=db)
         items: List[SaleItemViewDescDTO] = []
         for it in items_model:
@@ -105,9 +104,8 @@ class InvoiceService:
             raise HTTPException(status_code=404, detail="Company not found")
         raw = (company.regimen or "").strip().upper().replace(" ", "_")
         try:
-            regimen_enum = Regimen(raw)  # COMUN | NO_RESPONSABLE | SIMPLE
+            regimen_enum = Regimen(raw)  
         except ValueError:
-            # opcional: define un default o lanza error
             raise HTTPException(status_code=400, detail=f"Invalid regimen: {company.regimen!r}")
         company_dto = CompanyDTO(
             id=company.id,

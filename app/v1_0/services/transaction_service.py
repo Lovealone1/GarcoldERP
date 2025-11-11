@@ -253,12 +253,10 @@ class TransactionService:
             if not tx:
                 return False
 
-            # Caso especial: Abono saldo <NOMBRE>
             if await self._try_reverse_abono_saldo(tx, db):
                 await self.tx_repo.delete(tx, session=db)
                 return True
 
-            # Reversa genérica por tipo
             tx_type = await self.type_repo.get_by_id(tx.type_id, session=db)
             if not tx_type:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,

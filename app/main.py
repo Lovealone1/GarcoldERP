@@ -42,7 +42,6 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     container = ApplicationContainer()
     container.db_session.override(async_session)
-    # cablea Provide[...] si aplican
     try:
         container.wire(packages=["app.v1_0"])
     except Exception:
@@ -64,7 +63,6 @@ def create_app() -> FastAPI:
     allow_credentials = True
 
     if "*" in origins:
-        # wildcard + credenciales no legal en CORS
         allow_credentials = False
 
     logger.info("CORS origins=%s allow_credentials=%s", origins, allow_credentials)
