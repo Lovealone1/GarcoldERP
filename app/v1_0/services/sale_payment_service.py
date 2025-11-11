@@ -39,7 +39,30 @@ class SalePaymentService:
         channel_id: Optional[str] = None,
     ) -> SalePaymentDTO:
         """
-        Register a payment for a credit sale and emit realtime events.
+        Register a payment for a credit sale, update balances, and emit realtime events.
+
+        Operations:
+        - Validate that the sale exists and is a credit sale.
+        - Validate payment amount against remaining balance.
+        - Create a payment record.
+        - Decrease sale remaining balance.
+        - Decrease customer credit balance.
+        - Optionally mark sale as fully paid ("venta cancelada") when remaining becomes zero.
+        - Increase bank balance and create a corresponding transaction.
+        - Optionally publish realtime events for the payment and updated sale.
+
+        Args:
+            payload: Data for the sale payment (sale_id, bank_id, amount).
+            db: Active async database session.
+            channel_id: Optional realtime channel to publish events to.
+
+        Returns:
+            SalePaymentDTO representing the created payment.
+
+        Raises:
+            HTTPException: If the sale does not exist, is not credit,
+                or if the payment amount is invalid.
+            Exception: Propagated if database operations fail (after rollback).
         """
         async def _run() -> tuple[SalePaymentDTO, int]:
             sale = await self.sale_repository.get_by_id(payload.sale_id, session=db)
@@ -182,6 +205,30 @@ class SalePaymentService:
     ) -> bool:
         """
         Delete a sale payment, restore balances, and emit realtime events.
+
+        Operations:
+        - Ensure the payment exists.
+        - Ensure the associated sale exists.
+        - If the sale was marked as fully paid ("venta cancelada"),
+          revert it back to credit ("venta credito") when applicable.
+        - Recalculate and update the sale remaining balance by adding the payment amount.
+        - Decrease the bank balance by the payment amount.
+        - Increase the customer credit balance by the same amount.
+        - Delete the payment record.
+        - Delete the associated transaction record.
+        - Optionally emit realtime events for payment deletion and sale update.
+
+        Args:
+            payment_id: Identifier of the payment to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel to publish events to.
+
+        Returns:
+            True if the payment was found and deleted, False if no payment existed.
+
+        Raises:
+            HTTPException: If the associated sale does not exist.
+            Exception: Propagated if database operations fail (after rollback).
         """
         async def _run() -> tuple[bool, Optional[int]]:
             payment = await self.sale_payment_repository.get_by_id(
@@ -298,7 +345,21 @@ class SalePaymentService:
     db: AsyncSession
     ) -> List[SalePaymentViewDTO]:
         """
-        Return all payments made for a sale as view DTOs.
+        List all payments made for a sale with resolved bank names and remaining balance.
+
+        Builds a view-friendly representation of each payment, including:
+        - Bank name (cached per bank_id).
+        - Remaining balance for the sale.
+        - Amount paid.
+        - Created at timestamp.
+
+        Args:
+            sale_id: Identifier of the sale whose payments will be listed.
+            db: Active async database session.
+
+        Returns:
+            List of SalePaymentViewDTO for all payments of the given sale.
+            Returns an empty list if no payments exist.
         """
         payments = await self.sale_payment_repository.list_by_sale(sale_id, session=db)
         if not payments:
