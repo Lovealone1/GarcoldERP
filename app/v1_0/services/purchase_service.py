@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from math import ceil
 
+from app.core.logger import logger 
 from app.v1_0.repositories import (
     PurchaseRepository,
     PurchaseItemRepository,
@@ -16,6 +17,7 @@ from app.v1_0.repositories import (
 from app.v1_0.services.transaction_service import TransactionService
 from app.v1_0.entities import PurchaseItemDTO, PurchaseDTO, PurchasePageDTO, PurchaseItemViewDTO
 from app.v1_0.schemas import PurchaseInsert, PurchaseItemCreate, TransactionCreate
+from app.core.realtime import publish_realtime_event
 
 class PurchaseService:
     def __init__(
@@ -41,18 +43,23 @@ class PurchaseService:
         self._tx_type_pago_compra_id: Optional[int] = None
     
     async def finalize_purchase(
-    self,
-    supplier_id: int,
-    bank_id: int,
-    status_id: int,
-    cart: List[Dict[str, Any]],
-    db: AsyncSession,
-    purchase_date: Optional[datetime] = None,   
+        self,
+        supplier_id: int,
+        bank_id: int,
+        status_id: int,
+        cart: list[dict],
+        db: AsyncSession,
+        purchase_date: Optional[datetime] = None,
+        channel_id: Optional[str] = None,
     ) -> PurchaseDTO:
-
-        async with db.begin():
-            status_row = await self.status_repository.get_by_id(status_id, session=db)
-            is_credit = bool(status_row and status_row.name.lower() == "compra credito")
+        async def _run() -> PurchaseDTO:
+            status_row = await self.status_repository.get_by_id(
+                status_id,
+                session=db,
+            )
+            is_credit = bool(
+                status_row and status_row.name.lower() == "compra credito"
+            )
 
             purchase_stub = PurchaseInsert(
                 supplier_id=supplier_id,
@@ -60,19 +67,30 @@ class PurchaseService:
                 status_id=status_id,
                 total=0.0,
                 balance=0.0,
-                purchase_date=purchase_date or datetime.now(),  
+                purchase_date=purchase_date or datetime.now(),
             )
-            purchase = await self.purchase_repository.create_purchase(purchase_stub, session=db)
 
-            items: List[PurchaseItemDTO] = await self._build_items_from_cart(
-                cart=cart, purchase_id=purchase.id
+            purchase = await self.purchase_repository.create_purchase(
+                purchase_stub,
+                session=db,
+            )
+
+            items: list[PurchaseItemDTO] = await self._build_items_from_cart(
+                cart=cart,
+                purchase_id=purchase.id,
             )
 
             total_amount = 0.0
             for it in items:
-                product = await self.product_repository.get_by_id(it.product_id, session=db)
+                product = await self.product_repository.get_by_id(
+                    it.product_id,
+                    session=db,
+                )
                 if not product:
-                    raise HTTPException(status_code=404, detail=f"Product {it.product_id} not found")
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Product {it.product_id} not found",
+                    )
                 total_amount += it.total
 
             rows = [
@@ -84,7 +102,10 @@ class PurchaseService:
                 )
                 for it in items
             ]
-            await self.purchase_item_repository.bulk_insert_items(rows, session=db)
+            await self.purchase_item_repository.bulk_insert_items(
+                rows,
+                session=db,
+            )
 
             new_balance = total_amount if is_credit else 0.0
             purchase.total = total_amount
@@ -92,17 +113,31 @@ class PurchaseService:
             db.add(purchase)
 
             for it in items:
-                await self.product_repository.increase_quantity(it.product_id, it.quantity, session=db)
+                await self.product_repository.increase_quantity(
+                    it.product_id,
+                    it.quantity,
+                    session=db,
+                )
 
             if not is_credit:
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
+                bank = await self.bank_repository.get_by_id(
+                    bank_id,
+                    session=db,
+                )
                 if bank:
                     new_bank_balance = float(bank.balance or 0.0) - total_amount
-                    await self.bank_repository.update_balance(bank_id, new_bank_balance, session=db)
+                    await self.bank_repository.update_balance(
+                        bank_id,
+                        new_bank_balance,
+                        session=db,
+                    )
 
                     try:
-                        tx_type_id = await self.transaction_service.type_repo.get_id_by_name(
-                            "Pago compra", session=db
+                        tx_type_id = (
+                            await self.transaction_service.type_repo.get_id_by_name(
+                                "Pago compra",
+                                session=db,
+                            )
                         )
                     except Exception:
                         tx_type_id = None
@@ -117,21 +152,59 @@ class PurchaseService:
                         db=db,
                     )
 
-            supplier = await self.supplier_repository.get_by_id(supplier_id, session=db)
-            bank = await self.bank_repository.get_by_id(bank_id, session=db)
+            supplier = await self.supplier_repository.get_by_id(
+                supplier_id,
+                session=db,
+            )
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
+
             status_name = status_row.name if status_row else "Desconocido"
             supplier_name = supplier.name if supplier else "Desconocido"
             bank_name = bank.name if bank else "Desconocido"
 
-        return PurchaseDTO(
-            id=purchase.id,
-            supplier=supplier_name,
-            bank=bank_name,
-            status=status_name,
-            total=total_amount,
-            balance=new_balance,
-            purchase_date=purchase.purchase_date,
-        )
+            return PurchaseDTO(
+                id=purchase.id,
+                supplier=supplier_name,
+                bank=bank_name,
+                status=status_name,
+                total=total_amount,
+                balance=new_balance,
+                purchase_date=purchase.purchase_date,
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            dto = await _run()
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="purchase",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+                logger.info(
+                    "[PurchaseService] Realtime purchase created event published: purchase_id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[PurchaseService] realtime publish failed: %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
     
     async def _build_items_from_cart(
     self,
@@ -204,34 +277,111 @@ class PurchaseService:
             purchase_date=p.purchase_date,
         )
     
-    async def delete_purchase(self, purchase_id: int, db: AsyncSession) -> None:
-        async with db.begin():
-            p = await self.purchase_repository.get_by_id(purchase_id, session=db)
+    async def delete_purchase(
+        self,
+        purchase_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> None:
+        async def _run() -> int:
+            p = await self.purchase_repository.get_by_id(
+                purchase_id,
+                session=db,
+            )
             if not p:
-                raise HTTPException(status_code=404, detail="Purchase not found")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Purchase not found",
+                )
 
-            items = await self.purchase_item_repository.get_by_purchase_id(purchase_id, session=db)
+            items = await self.purchase_item_repository.get_by_purchase_id(
+                purchase_id,
+                session=db,
+            )
             for it in items:
-                await self.product_repository.decrease_quantity(it.product_id, it.quantity, session=db)
+                await self.product_repository.decrease_quantity(
+                    it.product_id,
+                    it.quantity,
+                    session=db,
+                )
 
-            status_row = await self.status_repository.get_by_id(p.status_id, session=db)
+            status_row = await self.status_repository.get_by_id(
+                p.status_id,
+                session=db,
+            )
             status_name = (status_row.name or "").lower() if status_row else ""
-            is_credit_like = status_name in ("compra credito", "compra cancelada")
+            is_credit_like = status_name in (
+                "compra credito",
+                "compra cancelada",
+            )
             is_cash = status_name == "compra contado"
 
-            payments = await self.purchase_payment_repository.list_by_purchase(purchase_id, session=db)
+            payments = await self.purchase_payment_repository.list_by_purchase(
+                purchase_id,
+                session=db,
+            )
 
             if is_credit_like:
                 for pay in payments:
-                    await self.bank_repository.increase_balance(pay.bank_id, float(pay.amount or 0), session=db)
+                    await self.bank_repository.increase_balance(
+                        pay.bank_id,
+                        float(pay.amount or 0),
+                        session=db,
+                    )
             elif is_cash:
-                await self.bank_repository.increase_balance(p.bank_id, float(p.total or 0), session=db)
+                await self.bank_repository.increase_balance(
+                    p.bank_id,
+                    float(p.total or 0),
+                    session=db,
+                )
 
-            await self.purchase_payment_repository.delete_by_purchase(purchase_id, session=db)
-            await self.purchase_item_repository.delete_by_purchase(purchase_id, session=db)
-            await self.transaction_service.delete_purchase_transactions(purchase_id, db=db)
+            await self.purchase_payment_repository.delete_by_purchase(
+                purchase_id,
+                session=db,
+            )
+            await self.purchase_item_repository.delete_by_purchase(
+                purchase_id,
+                session=db,
+            )
+            await self.transaction_service.delete_purchase_transactions(
+                purchase_id,
+                db=db,
+            )
+            await self.purchase_repository.delete_purchase(
+                purchase_id,
+                session=db,
+            )
 
-            await self.purchase_repository.delete_purchase(purchase_id, session=db)
+            return p.id
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            pid = await _run()
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="purchase",
+                    action="deleted",
+                    payload={"id": pid},
+                )
+                logger.info(
+                    "[PurchaseService] Realtime purchase deleted event published: purchase_id=%s",
+                    pid,
+                )
+            except Exception as e:
+                logger.error(
+                    "[PurchaseService] realtime publish failed: %s",
+                    e,
+                    exc_info=True,
+                )
 
     async def list_purchases(self, page: int, db: AsyncSession) -> PurchasePageDTO:
         page_size = self.PAGE_SIZE
