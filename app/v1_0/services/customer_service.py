@@ -21,6 +21,19 @@ class CustomerService:
         self.PAGE_SIZE = 10
 
     async def _require(self, customer_id: int, db: AsyncSession):
+        """
+        Ensure a customer exists or raise an HTTP 404 error.
+
+        Args:
+            customer_id: Identifier of the customer to fetch.
+            db: Active async database session.
+
+        Returns:
+            ORM customer entity if found.
+
+        Raises:
+            HTTPException: If the customer does not exist.
+        """
         c = await self.customer_repository.get_customer_by_id(customer_id, db)
         if not c:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
@@ -32,6 +45,25 @@ class CustomerService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> CustomerDTO:
+        """
+        Create a new customer.
+
+        Operations:
+        - Persist customer data.
+        - Map to CustomerDTO.
+        - Optionally emit a realtime "customer:created" event.
+
+        Args:
+            payload: CustomerCreate data with customer fields.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            CustomerDTO representing the created customer.
+
+        Raises:
+            HTTPException: 500 if creation fails.
+        """
         logger.info("[CustomerService] Creating customer: %s", payload.model_dump())
 
         async def _run() -> CustomerDTO:
@@ -84,6 +116,21 @@ class CustomerService:
         return dto
 
     async def get(self, customer_id: int, db: AsyncSession) -> CustomerDTO:
+        """
+        Retrieve a single customer by its identifier.
+
+        Args:
+            customer_id: Identifier of the customer.
+            db: Active async database session.
+
+        Returns:
+            CustomerDTO with customer data.
+
+        Raises:
+            HTTPException:
+                - 404 if not found.
+                - 500 if an internal error occurs.
+        """
         logger.debug(f"[CustomerService] Get customer ID={customer_id}")
         try:
             async with db.begin():
@@ -106,6 +153,18 @@ class CustomerService:
             raise HTTPException(status_code=500, detail="Failed to fetch customer")
 
     async def list_all(self, db: AsyncSession) -> List[CustomerDTO]:
+        """
+        List all customers without pagination.
+
+        Args:
+            db: Active async database session.
+
+        Returns:
+            List of CustomerDTO for all customers.
+
+        Raises:
+            HTTPException: 500 if the query fails.
+        """
         logger.debug("[CustomerService] List all customers")
         try:
             async with db.begin():
@@ -129,6 +188,25 @@ class CustomerService:
             raise HTTPException(status_code=500, detail="Failed to list customers")
 
     async def list_paginated(self, page: int, db: AsyncSession) -> CustomerPageDTO:
+        """
+        List customers in a paginated format.
+
+        Uses PAGE_SIZE as the page size and returns pagination metadata.
+
+        Args:
+            page: Page number to retrieve (1-based).
+            db: Active async database session.
+
+        Returns:
+            CustomerPageDTO containing:
+                - items: List of CustomerDTO.
+                - page: Current page.
+                - page_size: Items per page.
+                - total: Total number of customers.
+                - total_pages: Total number of pages.
+                - has_next: Whether a next page exists.
+                - has_prev: Whether a previous page exists.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
@@ -171,6 +249,28 @@ class CustomerService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> CustomerDTO:
+        """
+        Partially update an existing customer (PATCH-style).
+
+        Operations:
+        - Apply only provided fields.
+        - Map to CustomerDTO.
+        - Optionally emit a realtime "customer:updated" event.
+
+        Args:
+            customer_id: Identifier of the customer to update.
+            payload: CustomerUpdate data with optional fields to modify.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            CustomerDTO representing the updated customer.
+
+        Raises:
+            HTTPException:
+                - 404 if customer not found.
+                - 500 if update fails.
+        """
         logger.info(
             "[CustomerService] Update customer ID=%s data=%s",
             customer_id,
@@ -249,6 +349,25 @@ class CustomerService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> CustomerDTO:
+        """
+        Update a customer's balance to an explicit value.
+
+        Typically used by internal logic; prefer higher-level flows where possible.
+
+        Args:
+            customer_id: Identifier of the customer.
+            new_balance: New balance value to set.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            CustomerDTO with the updated balance.
+
+        Raises:
+            HTTPException:
+                - 404 if customer not found.
+                - 500 if update fails.
+        """
         logger.info(
             "[CustomerService] Update balance ID=%s -> %s",
             customer_id,
@@ -326,6 +445,26 @@ class CustomerService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> bool:
+        """
+        Delete a customer by its identifier.
+
+        Operations:
+        - Delete via repository.
+        - Optionally emit a realtime "customer:deleted" event.
+
+        Args:
+            customer_id: Identifier of the customer to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            True if the customer was deleted.
+
+        Raises:
+            HTTPException:
+                - 404 if customer not found.
+                - 500 if deletion fails.
+        """
         logger.warning("[CustomerService] Delete customer ID=%s", customer_id)
 
         async def _run() -> bool:
@@ -392,6 +531,38 @@ class CustomerService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> bool:
+        """
+        Register a simple manual payment against a customer's outstanding balance.
+
+        Operations:
+        - Validate positive amount.
+        - Validate customer and bank existence.
+        - Validate that amount does not exceed customer's balance.
+        - Decrease customer balance by amount.
+        - Increase bank balance by amount.
+        - Insert a corresponding transaction (manual payment).
+        - Optionally emit realtime events:
+          - customer_payment:created
+          - customer:updated
+
+        Args:
+            customer_id: Identifier of the customer whose balance is being reduced.
+            bank_id: Identifier of the bank receiving the payment.
+            amount: Payment amount (must be > 0 and <= current balance).
+            description: Optional payment description.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            True if the payment was registered successfully.
+
+        Raises:
+            HTTPException:
+                - 400 if amount is not valid.
+                - 404 if customer or bank not found.
+                - 422 if amount exceeds current balance.
+                - 500 if processing fails.
+        """
         if amount <= 0:
             raise HTTPException(
                 status_code=400,
