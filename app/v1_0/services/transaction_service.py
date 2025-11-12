@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import re
 
+from app.core.realtime import publish_realtime_event
 from app.core.logger import logger
 from app.v1_0.schemas import TransactionCreate
 from app.v1_0.entities import TransactionDTO, TransactionPageDTO, TransactionViewDTO
@@ -45,20 +46,38 @@ class TransactionService:
             logger.error(f"[TransactionService] insert_transaction failed: {e}", exc_info=True)
             raise
 
-    async def create(self, payload: TransactionCreate, db: AsyncSession) -> TransactionDTO:
-        if payload.type_id is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type_id is required.")
+    async def create(
+        self,
+        payload: TransactionCreate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> TransactionDTO:
+        type_id = payload.type_id
+        if type_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="type_id is required.",
+            )
 
         amount = Decimal(str(payload.amount))
 
-        async with db.begin():
-            bank = await self.bank_repo.get_by_id(payload.bank_id, session=db)
+        async def _run() -> TransactionDTO:
+            bank = await self.bank_repo.get_by_id(
+                payload.bank_id,
+                session=db,
+            )
             if not bank:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Bank not found.",
+                )
 
-            tx_type = await self.type_repo.get_by_id(payload.type_id, session=db)
+            tx_type = await self.type_repo.get_by_id(type_id, session=db)
             if not tx_type:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction type not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Transaction type not found.",
+                )
 
             kind = (tx_type.name or "").strip().lower()
             current_balance = Decimal(str(bank.balance or 0))
@@ -67,26 +86,75 @@ class TransactionService:
                 new_balance = current_balance + amount
             elif kind == "retiro":
                 if amount > current_balance:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient funds.")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Insufficient funds.",
+                    )
                 new_balance = current_balance - amount
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Unsupported transaction type. Use 'Ingreso' or 'Retiro'."
+                    detail="Unsupported transaction type. Use 'Ingreso' or 'Retiro'.",
                 )
 
-            bank.balance = float(new_balance)  
-            tx = await self.tx_repo.create_transaction(payload, session=db)
+            bank.balance = float(new_balance)
 
-        return TransactionDTO(
-            id=tx.id,
-            bank_id=tx.bank_id,
-            amount=tx.amount,
-            type_id=tx.type_id,
-            description=tx.description,
-            is_auto=tx.is_auto,
-            created_at=tx.created_at,
-        )
+            tx = await self.tx_repo.create_transaction(
+                payload,
+                session=db,
+            )
+
+            return TransactionDTO(
+                id=tx.id,
+                bank_id=tx.bank_id,
+                amount=tx.amount,
+                type_id=tx.type_id,
+                description=tx.description,
+                is_auto=tx.is_auto,
+                created_at=tx.created_at,
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            dto = await _run()
+            await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[TransactionService] Create failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create transaction",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="transaction",
+                    action="created",
+                    payload={"id": dto.id, "bank_id": dto.bank_id},
+                )
+                logger.info(
+                    "[TransactionService] RT transaction created published: id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[TransactionService] RT publish failed (create): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
         
     async def delete_purchase_payment_transaction(
         self,
@@ -243,43 +311,120 @@ class TransactionService:
         self,
         transaction_id: int,
         db: AsyncSession,
+        channel_id: Optional[str] = None,
     ) -> bool:
         """
-        Revierte por tipo ('ingreso'|'retiro') o, si es 'Abono saldo <NOMBRE>',
-        descuenta banco y suma al cliente. Luego elimina la transacción.
+        Revierte:
+        - Si es 'Abono saldo <NOMBRE>': ajusta banco/cliente y elimina.
+        - Si es 'ingreso'/'retiro': revierte impacto en banco según tipo.
+        Solo aplica para transacciones manuales según tu lógica actual.
         """
-        async with db.begin():
-            tx = await self.tx_repo.get_by_id(transaction_id, session=db)
+
+        async def _run() -> bool:
+            tx = await self.tx_repo.get_by_id(
+                transaction_id,
+                session=db,
+            )
             if not tx:
                 return False
 
+            # Caso especial: abono saldo cliente
             if await self._try_reverse_abono_saldo(tx, db):
                 await self.tx_repo.delete(tx, session=db)
                 return True
 
-            tx_type = await self.type_repo.get_by_id(tx.type_id, session=db)
+            tx_type = await self.type_repo.get_by_id(
+                tx.type_id,
+                session=db,
+            )
             if not tx_type:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                    detail=f"Tipo de transacción {tx.type_id} no encontrado")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Tipo de transacción {tx.type_id} no encontrado",
+                )
 
-            bank = await self.bank_repo.get_by_id(tx.bank_id, session=db)
+            bank = await self.bank_repo.get_by_id(
+                tx.bank_id,
+                session=db,
+            )
             if not bank:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                    detail=f"Banco {tx.bank_id} no encontrado")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Banco {tx.bank_id} no encontrado",
+                )
 
             amount = float(tx.amount or 0.0)
             tname = (tx_type.name or "").strip().lower()
 
             if tname == "ingreso":
-                if (bank.balance or 0.0) < amount:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                        detail=f"Saldo insuficiente para revertir ingreso (banco {bank.id} tiene {bank.balance:.2f})")
-                await self.bank_repo.decrease_balance(bank.id, amount, session=db)
+                if float(bank.balance or 0.0) < amount:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"Saldo insuficiente para revertir ingreso "
+                            f"(banco {bank.id} tiene {bank.balance:.2f})"
+                        ),
+                    )
+                await self.bank_repo.decrease_balance(
+                    bank.id,
+                    amount,
+                    session=db,
+                )
             elif tname == "retiro":
-                await self.bank_repo.increase_balance(bank.id, amount, session=db)
+                await self.bank_repo.increase_balance(
+                    bank.id,
+                    amount,
+                    session=db,
+                )
 
             await self.tx_repo.delete(tx, session=db)
             return True
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            existed = await _run()
+            await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[TransactionService] delete_manual_transaction failed ID=%s: %s",
+                transaction_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete transaction",
+            )
+
+        if not existed:
+            return False
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="transaction",
+                    action="deleted",
+                    payload={"id": transaction_id},
+                )
+                logger.info(
+                    "[TransactionService] RT transaction deleted published: id=%s",
+                    transaction_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[TransactionService] RT publish failed (delete): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
     
     async def list_transactions(self, page: int, db: AsyncSession) -> TransactionPageDTO:
         page_size = self.PAGE_SIZE
