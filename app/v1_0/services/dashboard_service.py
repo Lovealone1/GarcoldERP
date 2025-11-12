@@ -1,35 +1,59 @@
-from datetime import date, timedelta, datetime
 import calendar
 import collections
-from typing import Optional, Tuple, Mapping, Any, List, DefaultDict, Literal, Sequence
+from datetime import date, datetime, timedelta
+from typing import Any, DefaultDict, List, Mapping, Optional, Tuple
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.repositories import (
-    SaleRepository, CustomerRepository,
-    PurchaseRepository, SupplierRepository,
-    BankRepository, ExpenseRepository, ProfitRepository,
-    SaleItemRepository, ProductRepository,
-    LoanRepository, InvestmentRepository,
-)
 from app.v1_0.entities import (
-    Bucket as BucketDTO, 
-    Granularity as GranularityDTO,
-    RequestMetaDTO, SegmentMetaDTO,
-    SalesSeriesItemDTO, SalesSeriesDTO, ARItemDTO, SalesBlockDTO,
-    PurchasesSeriesItemDTO, PurchasesSeriesDTO, APItemDTO, PurchasesBlockDTO,
-    ExpensesSeriesItemDTO, ExpensesSeriesDTO, ExpensesBlockDTO,
-    ProfitSeriesItemDTO, ProfitSeriesDTO, ProfitBlockDTO,
-    BankItemDTO, BanksSummaryDTO,
-    TopProductItemDTO,
-    CreditItemDTO, CreditsSummaryDTO,
-    InvestmentItemDTO, InvestmentsSummaryDTO,
+    APItemDTO,
+    ARItemDTO,
+    BankItemDTO,
+    BanksSummaryDTO,
+    Bucket as BucketDTO,
+    CreditItemDTO,
+    CreditsSummaryDTO,
+    ExpensesBlockDTO,
+    ExpensesSeriesDTO,
+    ExpensesSeriesItemDTO,
     FinalReportDTO,
+    Granularity as GranularityDTO,
+    InvestmentItemDTO,
+    InvestmentsSummaryDTO,
+    ProfitBlockDTO,
+    ProfitSeriesDTO,
+    ProfitSeriesItemDTO,
+    PurchasesBlockDTO,
+    PurchasesSeriesDTO,
+    PurchasesSeriesItemDTO,
+    RequestMetaDTO,
+    SalesBlockDTO,
+    SalesSeriesDTO,
+    SalesSeriesItemDTO,
+    SegmentMetaDTO,
+    TopProductItemDTO,
 )
+from app.v1_0.repositories import (
+    BankRepository,
+    CustomerRepository,
+    ExpenseRepository,
+    InvestmentRepository,
+    LoanRepository,
+    ProductRepository,
+    ProfitRepository,
+    PurchaseRepository,
+    SaleItemRepository,
+    SaleRepository,
+    SupplierRepository,
+)
+
 
 class DashboardService:
     """
-    English refactor of general report service.
-    Sales & Profit segments are filterable by day / month / year.
+    Aggregated analytics for sales, purchases, expenses, profit, banks, credits,
+    investments, and top products.
+
+    Time-series endpoints support multiple buckets and adaptive granularity.
     """
 
     def __init__(
@@ -46,6 +70,22 @@ class DashboardService:
         loan_repository: LoanRepository,
         investment_repository: InvestmentRepository,
     ) -> None:
+        """
+        Initialize service with required repositories.
+
+        Args:
+            sale_repository: Sales read model.
+            customer_repository: Customers read model.
+            purchase_repository: Purchases read model.
+            supplier_repository: Suppliers read model.
+            bank_repository: Banks read model.
+            expense_repository: Expenses read model.
+            profit_repository: Profits read model.
+            sale_item_repository: Sale items read model.
+            product_repository: Products read model.
+            loan_repository: Loans read model.
+            investment_repository: Investments read model.
+        """
         self.sale_repository = sale_repository
         self.customer_repository = customer_repository
         self.purchase_repository = purchase_repository
@@ -58,8 +98,16 @@ class DashboardService:
         self.loan_repository = loan_repository
         self.investment_repository = investment_repository
 
-
     def _compact(self, d: Mapping[str, Any]) -> dict[str, Any]:
+        """
+        Remove None values from a mapping.
+
+        Args:
+            d: Input mapping.
+
+        Returns:
+            A new dict with only non-None values.
+        """
         return {k: v for k, v in d.items() if v is not None}
 
     async def _resolve_range(
@@ -74,6 +122,22 @@ class DashboardService:
         month: Optional[int] = None,
         use_purchases: bool = False,
     ) -> Tuple[date, date]:
+        """
+        Compute inclusive [start, end] based on bucket and overrides.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket selector.
+            pivot: Reference date for relative buckets.
+            date_from: Explicit start date.
+            date_to: Explicit end date.
+            year: Explicit year for month/year buckets.
+            month: Explicit month for month bucket.
+            use_purchases: Use purchases domain to infer min date.
+
+        Returns:
+            Tuple with (start_date, end_date).
+        """
         today = pivot or date.today()
 
         if bucket == "week":
@@ -96,17 +160,40 @@ class DashboardService:
             y = year or today.year
             return date(y, 1, 1), date(y, 12, 31)
 
-        mn = await (self.purchase_repository.min_date(session=session) if use_purchases
-                    else self.sale_repository.min_date(session=session))
+        mn = await (
+            self.purchase_repository.min_date(session=session)
+            if use_purchases
+            else self.sale_repository.min_date(session=session)
+        )
         return (mn or today), today
 
     def _iter_days(self, start: date, end: date):
+        """
+        Yield consecutive dates in [start, end].
+
+        Args:
+            start: Start date inclusive.
+            end: End date inclusive.
+
+        Yields:
+            date objects in ascending order.
+        """
         d = start
         while d <= end:
             yield d
             d += timedelta(days=1)
 
     def _iter_months(self, start: date, end: date):
+        """
+        Yield (year, month) pairs covering [start, end].
+
+        Args:
+            start: Start date inclusive.
+            end: End date inclusive.
+
+        Yields:
+            Tuples of (year, month).
+        """
         y, m = start.year, start.month
         while (y < end.year) or (y == end.year and m <= end.month):
             yield (y, m)
@@ -116,10 +203,31 @@ class DashboardService:
                 y += 1
 
     def _iter_years(self, start: date, end: date):
+        """
+        Yield years covering [start, end].
+
+        Args:
+            start: Start date inclusive.
+            end: End date inclusive.
+
+        Yields:
+            Year integers.
+        """
         for y in range(start.year, end.year + 1):
             yield y
 
     def _choose_granularity(self, bucket: BucketDTO, start: date, end: date) -> GranularityDTO:
+        """
+        Select granularity based on bucket and span.
+
+        Args:
+            bucket: Requested bucket.
+            start: Start date.
+            end: End date.
+
+        Returns:
+            Granularity value: "day", "month", or "year".
+        """
         if bucket in ("week", "month"):
             return "day"
         if bucket == "year":
@@ -128,6 +236,15 @@ class DashboardService:
         return "year" if years_span >= 3 else "month"
 
     def _to_iso_date(self, raw: Any) -> Optional[str]:
+        """
+        Convert a date/datetime into ISO date string.
+
+        Args:
+            raw: date, datetime, or any.
+
+        Returns:
+            ISO date string or None if input is None. Falls back to str(raw).
+        """
         if raw is None:
             return None
         if isinstance(raw, datetime):
@@ -147,13 +264,31 @@ class DashboardService:
         year: Optional[int] = None,
         month: Optional[int] = None,
     ) -> SalesSeriesDTO:
+        """
+        Aggregate sales totals and remaining balances over a range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+
+        Returns:
+            SalesSeriesDTO with metadata and series.
+        """
         start, end = await self._resolve_range(
             session, bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month
         )
         base = await self.sale_repository.sales_by_day(session=session, date_from=start, date_to=end)
-        by_day = {r["date"]: {"total": float(r["total"]), "remaining_balance": float(r["remaining_balance"])} for r in base}
+        by_day = {
+            r["date"]: {"total": float(r["total"]), "remaining_balance": float(r["remaining_balance"])}
+            for r in base
+        }
 
-        gran: GranularityDTO = self._choose_granularity(bucket, start, end)
+        gran = self._choose_granularity(bucket, start, end)
         series: List[SalesSeriesItemDTO] = []
 
         if gran == "day":
@@ -162,8 +297,7 @@ class DashboardService:
                 v = by_day.get(k, {"total": 0.0, "remaining_balance": 0.0})
                 series.append(SalesSeriesItemDTO(date=k, total=v["total"], remaining_balance=v["remaining_balance"]))
         elif gran == "month":
-            from collections import defaultdict
-            agg = defaultdict(lambda: {"total": 0.0, "remaining_balance": 0.0})
+            agg = collections.defaultdict(lambda: {"total": 0.0, "remaining_balance": 0.0})
             for k, v in by_day.items():
                 mk = k[:7]
                 agg[mk]["total"] += v["total"]
@@ -173,8 +307,7 @@ class DashboardService:
                 v = agg.get(mk, {"total": 0.0, "remaining_balance": 0.0})
                 series.append(SalesSeriesItemDTO(date=mk, total=v["total"], remaining_balance=v["remaining_balance"]))
         else:
-            from collections import defaultdict
-            agg = defaultdict(lambda: {"total": 0.0, "remaining_balance": 0.0})
+            agg = collections.defaultdict(lambda: {"total": 0.0, "remaining_balance": 0.0})
             for k, v in by_day.items():
                 yk = k[:4]
                 agg[yk]["total"] += v["total"]
@@ -184,12 +317,19 @@ class DashboardService:
                 v = agg.get(yk, {"total": 0.0, "remaining_balance": 0.0})
                 series.append(SalesSeriesItemDTO(date=yk, total=v["total"], remaining_balance=v["remaining_balance"]))
 
-        meta = SegmentMetaDTO(
-            bucket=bucket, granularity=gran, from_=start.isoformat(), to=end.isoformat(), segments=len(series)
-        )
+        meta = SegmentMetaDTO(bucket=bucket, granularity=gran, from_=start.isoformat(), to=end.isoformat(), segments=len(series))
         return SalesSeriesDTO(meta=meta, series=series)
 
     async def accounts_receivable(self, session: AsyncSession) -> List[ARItemDTO]:
+        """
+        List customers with receivables.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            List of ARItemDTO items with customer name, totals, and date.
+        """
         rows = await self.sale_repository.accounts_receivable(session=session)
         cache: dict[int, str] = {}
         out: List[ARItemDTO] = []
@@ -214,15 +354,33 @@ class DashboardService:
         year: Optional[int] = None,
         month: Optional[int] = None,
     ) -> PurchasesSeriesDTO:
+        """
+        Aggregate purchases totals and balances over a range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+
+        Returns:
+            PurchasesSeriesDTO with metadata and series.
+        """
         start, end = await self._resolve_range(
             session, bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month, use_purchases=True
         )
         base = await self.purchase_repository.purchases_by_day(session=session, date_from=start, date_to=end)
 
-        def k_of(r): f = r["date"]; return f.isoformat() if hasattr(f, "isoformat") else str(f)
+        def k_of(r: Mapping[str, Any]) -> str:
+            f = r["date"]
+            return f.isoformat() if hasattr(f, "isoformat") else str(f)
+
         by_day = {k_of(r): {"total": float(r["total"]), "balance": float(r["balance"])} for r in base}
 
-        gran: GranularityDTO = self._choose_granularity(bucket, start, end)
+        gran = self._choose_granularity(bucket, start, end)
         series: List[PurchasesSeriesItemDTO] = []
 
         if gran == "day":
@@ -231,8 +389,7 @@ class DashboardService:
                 v = by_day.get(k, {"total": 0.0, "balance": 0.0})
                 series.append(PurchasesSeriesItemDTO(date=k, total=v["total"], balance=v["balance"]))
         elif gran == "month":
-            from collections import defaultdict
-            agg = defaultdict(lambda: {"total": 0.0, "balance": 0.0})
+            agg = collections.defaultdict(lambda: {"total": 0.0, "balance": 0.0})
             for k, v in by_day.items():
                 mk = k[:7]
                 agg[mk]["total"] += v["total"]
@@ -242,8 +399,7 @@ class DashboardService:
                 v = agg.get(mk, {"total": 0.0, "balance": 0.0})
                 series.append(PurchasesSeriesItemDTO(date=mk, total=v["total"], balance=v["balance"]))
         else:
-            from collections import defaultdict
-            agg = defaultdict(lambda: {"total": 0.0, "balance": 0.0})
+            agg = collections.defaultdict(lambda: {"total": 0.0, "balance": 0.0})
             for k, v in by_day.items():
                 yk = k[:4]
                 agg[yk]["total"] += v["total"]
@@ -257,6 +413,15 @@ class DashboardService:
         return PurchasesSeriesDTO(meta=meta, series=series)
 
     async def accounts_payable(self, session: AsyncSession) -> List[APItemDTO]:
+        """
+        List suppliers with payables.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            List of APItemDTO items with supplier name, totals, and date.
+        """
         rows = await self.purchase_repository.accounts_payable(session=session)
         cache: dict[int, str] = {}
         out: List[APItemDTO] = []
@@ -281,6 +446,21 @@ class DashboardService:
         year: Optional[int] = None,
         month: Optional[int] = None,
     ) -> ExpensesSeriesDTO:
+        """
+        Aggregate expense amounts over a range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+
+        Returns:
+            ExpensesSeriesDTO with metadata and series.
+        """
         start, end = await self._resolve_range(
             session, bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month
         )
@@ -290,7 +470,7 @@ class DashboardService:
         for r in base:
             by_day_total[r["date"]] += float(r["amount"] or 0.0)
 
-        gran: GranularityDTO = self._choose_granularity(bucket, start, end)
+        gran = self._choose_granularity(bucket, start, end)
         series: List[ExpensesSeriesItemDTO] = []
 
         if gran == "day":
@@ -316,7 +496,7 @@ class DashboardService:
 
         meta = SegmentMetaDTO(bucket=bucket, granularity=gran, from_=start.isoformat(), to=end.isoformat(), segments=len(series))
         return ExpensesSeriesDTO(meta=meta, series=series)
-    
+
     async def profit_segments(
         self,
         session: AsyncSession,
@@ -328,13 +508,28 @@ class DashboardService:
         year: Optional[int] = None,
         month: Optional[int] = None,
     ) -> ProfitSeriesDTO:
+        """
+        Aggregate profit over a range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+
+        Returns:
+            ProfitSeriesDTO with metadata and series.
+        """
         start, end = await self._resolve_range(
             session, bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month
         )
         base = await self.profit_repository.profits_by_day(session=session, date_from=start, date_to=end)
         by_day = {r["date"]: float(r["profit"]) for r in base}
 
-        gran: GranularityDTO = self._choose_granularity(bucket, start, end)
+        gran = self._choose_granularity(bucket, start, end)
         series: List[ProfitSeriesItemDTO] = []
 
         if gran == "day":
@@ -342,28 +537,35 @@ class DashboardService:
                 k = d.isoformat()
                 series.append(ProfitSeriesItemDTO(date=k, profit=by_day.get(k, 0.0)))
         elif gran == "month":
-            from collections import defaultdict
-            agg = defaultdict(float)
+            agg_m = collections.defaultdict(float)
             for k, v in by_day.items():
                 mk = k[:7]
-                agg[mk] += v
+                agg_m[mk] += v
             for (y, m) in self._iter_months(start, end):
                 mk = f"{y:04d}-{m:02d}"
-                series.append(ProfitSeriesItemDTO(date=mk, profit=float(agg.get(mk, 0.0))))
+                series.append(ProfitSeriesItemDTO(date=mk, profit=float(agg_m.get(mk, 0.0))))
         else:
-            from collections import defaultdict
-            agg = defaultdict(float)
+            agg_y = collections.defaultdict(float)
             for k, v in by_day.items():
                 yk = k[:4]
-                agg[yk] += v
+                agg_y[yk] += v
             for y in self._iter_years(start, end):
                 yk = f"{y:04d}"
-                series.append(ProfitSeriesItemDTO(date=yk, profit=float(agg.get(yk, 0.0))))
+                series.append(ProfitSeriesItemDTO(date=yk, profit=float(agg_y.get(yk, 0.0))))
 
         meta = SegmentMetaDTO(bucket=bucket, granularity=gran, from_=start.isoformat(), to=end.isoformat(), segments=len(series))
         return ProfitSeriesDTO(meta=meta, series=series)
 
     async def banks_summary(self, session: AsyncSession) -> BanksSummaryDTO:
+        """
+        Summarize bank balances.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            BanksSummaryDTO with per-bank items and total.
+        """
         banks = await self.bank_repository.list_banks(session=session)
         items = [BankItemDTO(name=b.name, balance=float(b.balance or 0.0)) for b in banks]
         total = float(sum(i.balance for i in items))
@@ -381,10 +583,28 @@ class DashboardService:
         month: Optional[int] = None,
         limit: Optional[int] = 10,
     ) -> List[TopProductItemDTO]:
+        """
+        Top-N products by quantity sold in the resolved range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+            limit: Max products to return.
+
+        Returns:
+            List of TopProductItemDTO sorted by quantity.
+        """
         start, end = await self._resolve_range(
             session, bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month, use_purchases=False
         )
-        rows = await self.sale_item_repository.top_products_by_quantity(session=session, date_from=start, date_to=end, limit=limit)
+        rows = await self.sale_item_repository.top_products_by_quantity(
+            session=session, date_from=start, date_to=end, limit=limit
+        )
         cache: dict[int, str] = {}
         out: List[TopProductItemDTO] = []
         for r in rows:
@@ -398,6 +618,15 @@ class DashboardService:
         return out
 
     async def credits_summary(self, session: AsyncSession) -> CreditsSummaryDTO:
+        """
+        List active credits and total amount.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            CreditsSummaryDTO with credit items and total.
+        """
         rows = await self.loan_repository.list_all(session=session)
         active = [c for c in rows if float(getattr(c, "amount", 0) or 0) > 0]
         items = [
@@ -412,6 +641,15 @@ class DashboardService:
         return CreditsSummaryDTO(credits=items, total=total)
 
     async def investments_summary(self, session: AsyncSession) -> InvestmentsSummaryDTO:
+        """
+        List investments with balances and due dates plus total.
+
+        Args:
+            session: Database session.
+
+        Returns:
+            InvestmentsSummaryDTO with investment items and total.
+        """
         rows = await self.investment_repository.list_all(session=session)
 
         items: List[InvestmentItemDTO] = []
@@ -440,6 +678,22 @@ class DashboardService:
         month: Optional[int] = None,
         top_limit: Optional[int] = 10,
     ) -> FinalReportDTO:
+        """
+        Build the full dashboard response for a given range.
+
+        Args:
+            session: Database session.
+            bucket: Time bucket.
+            pivot: Reference date.
+            date_from: Start override.
+            date_to: End override.
+            year: Year override.
+            month: Month override.
+            top_limit: Max products for top list.
+
+        Returns:
+            FinalReportDTO with blocks, series, and computed totals.
+        """
         sales_series = await self.sales_segments(session=session, bucket=bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month)
         ar = await self.accounts_receivable(session=session)
 
@@ -466,14 +720,7 @@ class DashboardService:
         expenses = ExpensesBlockDTO(total_expenses=total_expenses, series=expenses_series)
         profit = ProfitBlockDTO(total_profit=total_profit, series=profit_series)
 
-        meta = RequestMetaDTO(
-            bucket=bucket,
-            pivot=pivot,
-            date_from=date_from,
-            date_to=date_to,
-            year=year,
-            month=month,
-        )
+        meta = RequestMetaDTO(bucket=bucket, pivot=pivot, date_from=date_from, date_to=date_to, year=year, month=month)
 
         return FinalReportDTO(
             meta=meta.model_dump(exclude_none=True),
