@@ -1,18 +1,20 @@
 from math import ceil
-from fastapi import HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logger import logger
+from app.core.realtime import publish_realtime_event
+from app.v1_0.entities import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
 from app.v1_0.repositories import (
     ExpenseRepository,
     BankRepository,
     ExpenseCategoryRepository,
 )
-from app.v1_0.services import TransactionService
 from app.v1_0.schemas import ExpenseCreate, TransactionCreate
-from app.v1_0.entities import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
-from app.core.realtime import publish_realtime_event
+from app.v1_0.services import TransactionService
+
 
 class ExpenseService:
     def __init__(
@@ -20,7 +22,7 @@ class ExpenseService:
         expense_repository: ExpenseRepository,
         bank_repository: BankRepository,
         expense_category_repository: ExpenseCategoryRepository,
-        transaction_service: TransactionService
+        transaction_service: TransactionService,
     ) -> None:
         self.expense_repo = expense_repository
         self.bank_repo = bank_repository
@@ -28,10 +30,30 @@ class ExpenseService:
         self.tx_service = transaction_service
         self.PAGE_SIZE = 8
 
-    async def _require(self, expense_id: int, db: AsyncSession):
+    async def _require(
+        self,
+        expense_id: int,
+        db: AsyncSession,
+    ):
+        """
+        Ensure an expense exists or raise an HTTP 404 error.
+
+        Args:
+            expense_id: Identifier of the expense to fetch.
+            db: Active async database session.
+
+        Returns:
+            ORM expense entity if found.
+
+        Raises:
+            HTTPException: If the expense does not exist.
+        """
         e = await self.expense_repo.get_by_id(expense_id, session=db)
         if not e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Expense not found.",
+            )
         return e
 
     async def create(
@@ -40,7 +62,36 @@ class ExpenseService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> ExpenseDTO:
-        logger.info("[ExpenseService] Creating expense: %s", payload.model_dump())
+        """
+        Create a new expense, update bank balance, and register its transaction.
+
+        Operations:
+        - Validate bank and expense category existence.
+        - Validate positive amount and sufficient bank balance.
+        - Resolve transaction type "Gasto".
+        - Decrease bank balance by expense amount.
+        - Create expense record.
+        - Insert corresponding automatic transaction.
+        - Optionally emit a realtime "expense:created" event.
+
+        Args:
+            payload: ExpenseCreate data with expense fields.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            ExpenseDTO representing the created expense.
+
+        Raises:
+            HTTPException:
+                - 400 for invalid amount or insufficient balance.
+                - 404 for missing bank or category.
+                - 500 if transaction type is missing or creation fails.
+        """
+        logger.info(
+            "[ExpenseService] Creating expense: %s",
+            payload.model_dump(),
+        )
 
         async def _run() -> ExpenseDTO:
             bank = await self.bank_repo.get_by_id(
@@ -170,8 +221,28 @@ class ExpenseService:
         channel_id: Optional[str] = None,
     ) -> bool:
         """
-        Delete an expense, restore bank balance, and remove its transactions.
-        Emits expense:deleted post-commit si existía.
+        Delete an expense, restore bank balance, and remove related transactions.
+
+        Operations:
+        - If expense does not exist, return False.
+        - Validate linked bank exists.
+        - Increase bank balance by expense amount.
+        - Delete expense record.
+        - Attempt to delete associated expense transactions.
+        - Optionally emit a realtime "expense:deleted" event.
+
+        Args:
+            expense_id: Identifier of the expense to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier for event publishing.
+
+        Returns:
+            True if the expense existed and was deleted, False if it did not exist.
+
+        Raises:
+            HTTPException:
+                - 404 if linked bank not found.
+                - 500 if delete flow fails.
         """
 
         async def _run() -> bool:
@@ -263,7 +334,33 @@ class ExpenseService:
 
         return True
 
-    async def list_paginated(self, page: int, db: AsyncSession) -> ExpensePageDTO:
+    async def list_paginated(
+        self,
+        page: int,
+        db: AsyncSession,
+    ) -> ExpensePageDTO:
+        """
+        List expenses in a paginated format with resolved category and bank names.
+
+        For each expense:
+        - Includes category name.
+        - Includes bank name or a fallback label.
+        - Includes normalized amount and expense date.
+
+        Args:
+            page: Page number to retrieve (1-based).
+            db: Active async database session.
+
+        Returns:
+            ExpensePageDTO containing:
+                - items: List of ExpenseViewDTO.
+                - page: Current page.
+                - page_size: Items per page.
+                - total: Total number of expenses.
+                - total_pages: Total number of pages.
+                - has_next: Whether a next page exists.
+                - has_prev: Whether a previous page exists.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
