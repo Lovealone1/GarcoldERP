@@ -1,21 +1,20 @@
 from math import ceil
 from typing import List
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.repositories import (
-    ProfitRepository,
-    ProfitItemRepository,
-    ProductRepository,
-)
+from app.v1_0.entities import ProfitDTO, ProfitItemDTO, ProfitPageDTO
 from app.v1_0.models import Profit
-from app.v1_0.entities import (
-    ProfitDTO,
-    ProfitPageDTO,
-    ProfitItemDTO,
+from app.v1_0.repositories import (
+    ProductRepository,
+    ProfitItemRepository,
+    ProfitRepository,
 )
 
 class ProfitService:
+    """Application service for profit summaries and per-item profit details."""
+
     def __init__(
         self,
         profit_repository: ProfitRepository,
@@ -26,12 +25,22 @@ class ProfitService:
         self.profit_item_repository = profit_item_repository
         self.product_repository = product_repository
         self.PAGE_SIZE = 16
-        
+
     async def list_profits(self, page: int, db: AsyncSession) -> ProfitPageDTO:
+        """
+        Return paginated profit records.
+
+        Args:
+            page: 1-based page number.
+            db: Active async SQLAlchemy session.
+
+        Returns:
+            ProfitPageDTO with items and pagination metadata.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
-        items, total, *rest = await self.profit_repository.list_paginated(
+        items, total, *_ = await self.profit_repository.list_paginated(
             offset=offset, limit=page_size, session=db
         )
 
@@ -60,31 +69,41 @@ class ProfitService:
 
     async def get_by_sale_id(self, sale_id: int, db: AsyncSession) -> Profit:
         """
-        Return the Profit record associated with a sale_id.
-        Raises 404 if not found.
+        Return the Profit row associated with a sale.
+
+        Args:
+            sale_id: Sale identifier.
+            db: Active async SQLAlchemy session.
+
+        Raises:
+            HTTPException: 404 if no profit exists for the sale.
+
+        Returns:
+            Profit ORM instance.
         """
         async with db.begin():
-            profit = await self.profit_repository.get_by_sale(
-                sale_id=sale_id, session=db
-            )
+            profit = await self.profit_repository.get_by_sale(sale_id=sale_id, session=db)
             if not profit:
                 raise HTTPException(status_code=404, detail="Profit not found for the given sale.")
             return profit
 
-    async def get_details_by_sale(
-        self,
-        sale_id: int,
-        db: AsyncSession,
-    ) -> List[ProfitItemDTO]:
+    async def get_details_by_sale(self, sale_id: int, db: AsyncSession) -> List[ProfitItemDTO]:
         """
-        Return all ProfitItem rows for the sale, mapped to DTOs
-        including product reference and description. If your DB stores
-        profit_total as a generated column, we still compute it here to keep the DTO consistent.
+        Return per-item profit details for a sale.
+
+        Each DTO includes product reference and description. If the DB provides
+        a generated `profit_total`, this method still computes a fallback
+        as `(sale_price - purchase_price) * quantity`.
+
+        Args:
+            sale_id: Sale identifier.
+            db: Active async SQLAlchemy session.
+
+        Returns:
+            List of ProfitItemDTO.
         """
         async with db.begin():
-            rows = await self.profit_item_repository.get_by_sale(
-                sale_id=sale_id, session=db
-            )
+            rows = await self.profit_item_repository.get_by_sale(sale_id=sale_id, session=db)
 
             dtos: List[ProfitItemDTO] = []
             for r in rows:
