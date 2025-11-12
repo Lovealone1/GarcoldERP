@@ -1,7 +1,7 @@
 from math import ceil
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 from app.core.logger import logger
 from app.v1_0.repositories import (
@@ -12,6 +12,7 @@ from app.v1_0.repositories import (
 from app.v1_0.services import TransactionService
 from app.v1_0.schemas import ExpenseCreate, TransactionCreate
 from app.v1_0.entities import ExpenseDTO, ExpensePageDTO, ExpenseViewDTO
+from app.core.realtime import publish_realtime_event
 
 class ExpenseService:
     def __init__(
@@ -33,30 +34,70 @@ class ExpenseService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found.")
         return e
 
-    async def create(self, payload: ExpenseCreate, db: AsyncSession) -> ExpenseDTO:
-        logger.info(f"[ExpenseService] Creating expense: {payload.model_dump()}")
-        try:
-            async with db.begin():
-                bank = await self.bank_repo.get_by_id(payload.bank_id, session=db)
-                if not bank:
-                    raise HTTPException(status_code=404, detail="Bank not found.")
-                cat = await self.category_repo.get_by_id(payload.expense_category_id, session=db)
-                if not cat:
-                    raise HTTPException(status_code=404, detail="Expense category not found.")
-                if payload.amount <= 0:
-                    raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
-                if (bank.balance or 0) < payload.amount:
-                    raise HTTPException(status_code=400, detail="Insufficient bank balance.")
+    async def create(
+        self,
+        payload: ExpenseCreate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> ExpenseDTO:
+        logger.info("[ExpenseService] Creating expense: %s", payload.model_dump())
 
-                expense_type_id = await self.tx_service.type_repo.get_id_by_name("Gasto", session=db)
-                if expense_type_id is None:
-                    raise HTTPException(status_code=500, detail="Transaction type 'Gasto' not found.")
+        async def _run() -> ExpenseDTO:
+            bank = await self.bank_repo.get_by_id(
+                payload.bank_id,
+                session=db,
+            )
+            if not bank:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Bank not found.",
+                )
 
-                await self.bank_repo.decrease_balance(payload.bank_id, payload.amount, session=db)
-                exp = await self.expense_repo.create_expense(payload, session=db)
+            cat = await self.category_repo.get_by_id(
+                payload.expense_category_id,
+                session=db,
+            )
+            if not cat:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Expense category not found.",
+                )
 
-                desc = f"Gasto {cat.name} {exp.id}"
-                await self.tx_service.insert_transaction(
+            if payload.amount <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Amount must be greater than zero.",
+                )
+
+            if float(bank.balance or 0) < float(payload.amount or 0):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient bank balance.",
+                )
+
+            expense_type_id = await self.tx_service.type_repo.get_id_by_name(
+                "Gasto",
+                session=db,
+            )
+            if expense_type_id is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Transaction type 'Gasto' not found.",
+                )
+
+            await self.bank_repo.decrease_balance(
+                payload.bank_id,
+                payload.amount,
+                session=db,
+            )
+
+            exp = await self.expense_repo.create_expense(
+                payload,
+                session=db,
+            )
+
+            desc = f"Gasto {cat.name} {exp.id}"
+            await self.tx_service.insert_transaction(
                 TransactionCreate(
                     bank_id=payload.bank_id,
                     amount=payload.amount,
@@ -67,7 +108,11 @@ class ExpenseService:
                 db=db,
             )
 
-            logger.info(f"[ExpenseService] Expense created ID={exp.id}")
+            logger.info(
+                "[ExpenseService] Expense created ID=%s",
+                exp.id,
+            )
+
             return ExpenseDTO(
                 id=exp.id,
                 expense_category_id=exp.expense_category_id,
@@ -75,33 +120,148 @@ class ExpenseService:
                 bank_id=exp.bank_id,
                 expense_date=exp.expense_date,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[ExpenseService] Create failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to create expense")
-    
-    async def delete(self, expense_id: int, db: AsyncSession) -> bool:
-        """Delete an expense, restore bank balance, and remove its transactions."""
-        async with db.begin():
-            exp = await self.expense_repo.get_by_id(expense_id, session=db)
+            await db.rollback()
+            logger.error(
+                "[ExpenseService] Create failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create expense",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="expense",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+                logger.info(
+                    "[ExpenseService] RT expense created published: id=%s",
+                    dto.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[ExpenseService] RT publish failed (create): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def delete(
+        self,
+        expense_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Delete an expense, restore bank balance, and remove its transactions.
+        Emits expense:deleted post-commit si existía.
+        """
+
+        async def _run() -> bool:
+            exp = await self.expense_repo.get_by_id(
+                expense_id,
+                session=db,
+            )
             if not exp:
                 return False
 
-            bank = await self.bank_repo.get_by_id(exp.bank_id, session=db)
+            bank = await self.bank_repo.get_by_id(
+                exp.bank_id,
+                session=db,
+            )
             if not bank:
-                raise HTTPException(status_code=404, detail="Linked bank not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Linked bank not found.",
+                )
 
-            await self.bank_repo.increase_balance(exp.bank_id, float(exp.amount or 0), session=db)
+            await self.bank_repo.increase_balance(
+                exp.bank_id,
+                float(exp.amount or 0),
+                session=db,
+            )
 
-            deleted = await self.expense_repo.delete_expense(expense_id, session=db)
+            deleted = await self.expense_repo.delete_expense(
+                expense_id,
+                session=db,
+            )
 
             try:
-                await self.tx_service.delete_expense_transactions(expense_id, db=db)
-            except Exception:
-                pass
+                await self.tx_service.delete_expense_transactions(
+                    expense_id,
+                    db=db,
+                )
+            except Exception as e:
+                logger.warning(
+                    "[ExpenseService] delete_expense_transactions failed id=%s: %s",
+                    expense_id,
+                    e,
+                )
 
-            return deleted
+            return bool(deleted)
+
+        if not db.in_transaction():
+            await db.begin()
+
+        try:
+            existed = await _run()
+            await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[ExpenseService] Delete failed ID=%s: %s",
+                expense_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete expense",
+            )
+
+        if not existed:
+            return False
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="expense",
+                    action="deleted",
+                    payload={"id": expense_id},
+                )
+                logger.info(
+                    "[ExpenseService] RT expense deleted published: id=%s",
+                    expense_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "[ExpenseService] RT publish failed (delete): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
 
     async def list_paginated(self, page: int, db: AsyncSession) -> ExpensePageDTO:
         page_size = self.PAGE_SIZE
