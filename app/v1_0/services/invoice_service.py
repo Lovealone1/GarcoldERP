@@ -1,28 +1,31 @@
-from typing import List
+from datetime import datetime, timezone
+from typing import List, Optional
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import timezone, datetime 
 from zoneinfo import ZoneInfo
 
 from app.v1_0.entities import (
-    SaleInvoiceDTO,
     CompanyDTO,
     CustomerDTO,
+    Regimen,
+    SaleInvoiceDTO,
     SaleItemViewDescDTO,
-    Regimen
 )
-
 from app.v1_0.repositories import (
-    CustomerRepository,
+    BankRepository,
     CompanyRepository,
+    CustomerRepository,
+    ProductRepository,
     SaleItemRepository,
     SaleRepository,
-    BankRepository,
     StatusRepository,
-    ProductRepository,
 )
 
+
 class InvoiceService:
+    """Builds invoice DTOs from persisted sales and related entities."""
+
     def __init__(
         self,
         customer_repository: CustomerRepository,
@@ -31,7 +34,7 @@ class InvoiceService:
         sale_repository: SaleRepository,
         bank_repository: BankRepository,
         status_repository: StatusRepository,
-        product_repository: ProductRepository
+        product_repository: ProductRepository,
     ) -> None:
         self.customer_repository = customer_repository
         self.company_repository = company_repository
@@ -41,17 +44,43 @@ class InvoiceService:
         self.status_repository = status_repository
         self.product_repository = product_repository
         self.company_id = 1
-        
-    def fmt_dt(self,dt: datetime | None,
-           fmt: str = "%Y-%m-%d %H:%M",
-           tz: str = "America/Bogota") -> str | None:
+
+    def fmt_dt(
+        self,
+        dt: Optional[datetime],
+        fmt: str = "%Y-%m-%d %H:%M",
+        tz: str = "America/Bogota",
+    ) -> Optional[str]:
+        """Format a datetime in the target timezone. Treat naive as UTC.
+
+        Args:
+            dt: Datetime to format. Returns None if dt is None.
+            fmt: strftime pattern.
+            tz: IANA timezone name.
+
+        Returns:
+            Formatted datetime string or None.
+        """
         if dt is None:
             return None
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)  
+            dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(ZoneInfo(tz)).strftime(fmt)
 
     async def generate_from_sale(self, sale_id: int, db: AsyncSession) -> SaleInvoiceDTO:
+        """Compose a SaleInvoiceDTO resolving customer, company, items, status, and bank.
+
+        Args:
+            sale_id: Sale identifier.
+            db: Active async DB session.
+
+        Returns:
+            SaleInvoiceDTO with all printable data.
+
+        Raises:
+            HTTPException: 404 if sale, customer, or company are missing.
+                            400 if company regimen is invalid.
+        """
         sale = await self.sale_repository.get_by_id(sale_id, session=db)
         if not sale:
             raise HTTPException(status_code=404, detail="Sale not found")
@@ -69,7 +98,7 @@ class InvoiceService:
             address=customer.address,
             city=customer.city,
             balance=customer.balance,
-            created_at=customer.created_at
+            created_at=customer.created_at,
         )
 
         bank = await self.bank_repository.get_by_id(sale.bank_id, session=db)
@@ -102,11 +131,13 @@ class InvoiceService:
         company = await self.company_repository.get_by_id(self.company_id, session=db)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
+
         raw = (company.regimen or "").strip().upper().replace(" ", "_")
         try:
-            regimen_enum = Regimen(raw)  
+            regimen_enum = Regimen(raw)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid regimen: {company.regimen!r}")
+
         company_dto = CompanyDTO(
             id=company.id,
             razon_social=company.razon_social,
@@ -118,7 +149,7 @@ class InvoiceService:
             municipio=company.municipio,
             departamento=company.departamento,
             codigo_postal=company.codigo_postal,
-            regimen=regimen_enum,  
+            regimen=regimen_enum,
         )
 
         return SaleInvoiceDTO(
