@@ -3,7 +3,9 @@ from fastapi import APIRouter, HTTPException, Depends, Body, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+from app.core.security.deps import AuthContext, get_auth_context
 from app.storage.database.db_connector import get_db
+from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
 
@@ -12,7 +14,6 @@ from app.v1_0.entities import BankDTO
 from app.v1_0.services import BankService
 
 router = APIRouter(prefix="/banks", tags=["Banks"])
-
 
 @router.post(
     "/create",
@@ -24,30 +25,24 @@ router = APIRouter(prefix="/banks", tags=["Banks"])
 async def create_bank(
     request: BankCreate,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     bank_service: BankService = Depends(
         Provide[ApplicationContainer.api_container.bank_service]
     ),
-):
-    logger.info(f"[BankRouter] create_bank payload={request.model_dump()}")
+) -> BankDTO:
+    logger.info("[BankRouter] create_bank payload=%s", request.model_dump())
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        created = await bank_service.create_bank(request, db)
+        return await bank_service.create_bank(request, db, channel_id=channel_id)
     except ValueError as e:
-        logger.warning(f"[BankRouter] create_bank validation_error: {e}")
+        logger.warning("[BankRouter] create_bank validation_error: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[BankRouter] create_bank error: {e}", exc_info=True)
+        logger.error("[BankRouter] create_bank error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create bank")
-
-    return BankDTO(
-        id=created.id,
-        name=created.name,
-        balance=created.balance, 
-        created_at=created.created_at,
-        updated_at=created.updated_at,
-        account_number=created.account_number
-    )
 
 
 @router.get(
@@ -94,29 +89,22 @@ async def update_bank_balance(
     bank_id: int,
     new_balance: float = Body(..., embed=True, description="New balance"),
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     bank_service: BankService = Depends(
         Provide[ApplicationContainer.api_container.bank_service]
     ),
-):
-    logger.info(f"[BankRouter] update_bank_balance id={bank_id} new_balance={new_balance}")
+) -> BankDTO:
+    logger.info("[BankRouter] update_bank_balance id=%s new_balance=%s", bank_id, new_balance)
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        bank = await bank_service.update_balance(bank_id, new_balance, db)
-        if not bank:
-            raise HTTPException(status_code=404, detail="Bank not found")
+        return await bank_service.update_balance(bank_id, new_balance, db, channel_id=channel_id)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[BankRouter] update_bank_balance error: {e}", exc_info=True)
+        logger.error("[BankRouter] update_bank_balance error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update balance")
 
-    return BankDTO(
-        id=bank.id,
-        name=bank.name if hasattr(bank, "name") else bank.name,
-        balance=bank.balance if hasattr(bank, "balance") else bank.balance,
-        created_at=bank.created_at,
-        updated_at=bank.updated_at,
-        account_number=bank.account_number
-    )
 
 @router.delete(
     "/{bank_id}",
@@ -127,20 +115,23 @@ async def update_bank_balance(
 async def delete_bank(
     bank_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     bank_service: BankService = Depends(
         Provide[ApplicationContainer.api_container.bank_service]
     ),
-):
-    logger.warning(f"[BankRouter] delete_bank id={bank_id}")
+) -> Dict[str, str]:
+    logger.warning("[BankRouter] delete_bank id=%s", bank_id)
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await bank_service.delete_bank(bank_id, db)
+        ok = await bank_service.delete_bank(bank_id, db, channel_id=channel_id)
     except ValueError as e:
-        logger.warning(f"[BankRouter] delete_bank blocked: {e}")
+        logger.warning("[BankRouter] delete_bank blocked: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[BankRouter] delete_bank error: {e}", exc_info=True)
+        logger.error("[BankRouter] delete_bank error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete bank")
 
     if not ok:

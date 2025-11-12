@@ -5,145 +5,486 @@ from fastapi import HTTPException, status
 from app.v1_0.repositories.bank_repository import BankRepository
 from app.v1_0.schemas import BankCreate
 from app.v1_0.models import Bank
+from app.v1_0.entities import BankDTO
+from app.core.realtime import publish_realtime_event
 from app.core.logger import logger
 
 class BankService:
     def __init__(self, bank_repository: BankRepository) -> None:
         self.bank_repository = bank_repository
 
-    async def create_bank(self, payload: BankCreate, db: AsyncSession) -> Bank:
-        """Create bank with detailed logging."""
-        logger.info(f"[BankService] Creating bank with payload: {payload.model_dump()}")
-        try:
-            async with db.begin():
-                bank = await self.bank_repository.create_bank(payload, session=db)
-            logger.info(f"[BankService] Bank created successfully with ID={bank.id}")
-            return bank
-        except Exception as e:
-            logger.error(f"[BankService] Failed to create bank: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to create bank")
+    async def create_bank(
+        self,
+        payload: BankCreate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> BankDTO:
+        logger.info(
+            "[BankService] Creating bank with payload: %s",
+            payload.model_dump(),
+        )
 
-    async def get_bank_by_id(self, bank_id: int, db: AsyncSession) -> Optional[Bank]:
-        """Get bank by ID."""
-        logger.debug(f"[BankService] Fetching bank by ID={bank_id}")
+        async def _run() -> BankDTO:
+            bank = await self.bank_repository.create_bank(
+                payload,
+                session=db,
+            )
+            logger.info(
+                "[BankService] Bank created successfully ID=%s",
+                bank.id,
+            )
+            return BankDTO(
+                id=bank.id,
+                name=bank.name,
+                account_number=bank.account_number,
+                balance=bank.balance,
+                created_at=bank.created_at,
+                updated_at=bank.updated_at
+            )
+
+        if not db.in_transaction():
+            await db.begin()
         try:
-            async with db.begin():
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
+            dto = await _run()
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[BankService] Failed to create bank: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create bank",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="bank",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[BankService] RT publish failed (create_bank): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def get_bank_by_id(
+        self,
+        bank_id: int,
+        db: AsyncSession,
+    ) -> Optional[BankDTO]:
+        logger.debug(
+            "[BankService] Fetching bank by ID=%s",
+            bank_id,
+        )
+        try:
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
             if not bank:
-                logger.warning(f"[BankService] Bank not found with ID={bank_id}")
-            else:
-                logger.info(f"[BankService] Bank fetched successfully: {bank.name}")
-            return bank
-        except Exception as e:
-            logger.error(f"[BankService] Error fetching bank ID={bank_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to fetch bank")
+                logger.warning(
+                    "[BankService] Bank not found with ID=%s",
+                    bank_id,
+                )
+                return None
 
-    async def get_all_banks(self, db: AsyncSession) -> List[Bank]:
-        """List all banks."""
-        logger.debug("[BankService] Listing all banks...")
-        try:
-            async with db.begin():
-                banks = await self.bank_repository.list_all(session=db)
-            logger.info(f"[BankService] Retrieved {len(banks)} banks from database.")
-            return banks
+            logger.info(
+                "[BankService] Bank fetched successfully: %s",
+                bank.name,
+            )
+            return BankDTO(
+                id=bank.id,
+                name=bank.name,
+                account_number=bank.account_number,
+                balance=bank.balance,
+                created_at=bank.created_at,
+                updated_at=getattr(bank, "updated_at", None),
+            )
         except Exception as e:
-            logger.error(f"[BankService] Error listing banks: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to list banks")
+            logger.error(
+                "[BankService] Error fetching bank ID=%s: %s",
+                bank_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to fetch bank",
+            )
 
-    async def update_balance(self, bank_id: int, new_balance: float, db: AsyncSession) -> Optional[Bank]:
-        """Update balance."""
-        logger.info(f"[BankService] Updating balance for Bank ID={bank_id} to {new_balance}")
+    async def get_all_banks(
+        self,
+        db: AsyncSession,
+    ) -> List[BankDTO]:
+        logger.debug("[BankService] Listing all banks")
         try:
-            async with db.begin():
-                bank = await self.bank_repository.update_balance(bank_id, new_balance, session=db)
+            banks = await self.bank_repository.list_all(
+                session=db,
+            )
+            logger.info(
+                "[BankService] Retrieved %s banks from database.",
+                len(banks),
+            )
+            return [
+                BankDTO(
+                    id=b.id,
+                    name=b.name,
+                    account_number=b.account_number,
+                    balance=b.balance,
+                    created_at=b.created_at,
+                    updated_at=getattr(b, "updated_at", None),
+                )
+                for b in banks
+            ]
+        except Exception as e:
+            logger.error(
+                "[BankService] Error listing banks: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to list banks",
+            )
+
+    async def update_balance(
+        self,
+        bank_id: int,
+        new_balance: float,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> BankDTO:
+        logger.info(
+            "[BankService] Updating balance for Bank ID=%s to %s",
+            bank_id,
+            new_balance,
+        )
+
+        async def _run() -> BankDTO:
+            bank = await self.bank_repository.update_balance(
+                bank_id,
+                new_balance,
+                session=db,
+            )
             if not bank:
-                logger.warning(f"[BankService] Bank not found for update ID={bank_id}")
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank not found.")
-            logger.info(f"[BankService] Bank ID={bank_id} balance updated successfully.")
-            return bank
+                logger.warning(
+                    "[BankService] Bank not found for update ID=%s",
+                    bank_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Bank not found.",
+                )
+            logger.info(
+                "[BankService] Bank ID=%s balance updated successfully.",
+                bank_id,
+            )
+            return BankDTO(
+                id=bank.id,
+                name=bank.name,
+                account_number=bank.account_number,
+                balance=bank.balance,
+                created_at=bank.created_at,
+                updated_at=bank.updated_at
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[BankService] Error updating bank balance ID={bank_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to update balance")
+            await db.rollback()
+            logger.error(
+                "[BankService] Error updating bank balance ID=%s: %s",
+                bank_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update balance",
+            )
 
-    async def delete_bank(self, bank_id: int, db: AsyncSession) -> bool:
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="bank",
+                    action="updated",
+                    payload={"id": dto.id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[BankService] RT publish failed (update_balance): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def delete_bank(
+        self,
+        bank_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> bool:
         """Delete bank if balance == 0."""
-        logger.warning(f"[BankService] Attempting to delete bank ID={bank_id}")
-        try:
-            async with db.begin():
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
-                if not bank:
-                    logger.warning(f"[BankService] Bank not found for deletion ID={bank_id}")
-                    return False
-                if (bank.balance or 0) > 0:
-                    logger.warning(f"[BankService] Cannot delete bank ID={bank_id} with balance={bank.balance}")
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot delete a bank with balance greater than 0."
-                    )
-                result = await self.bank_repository.delete_bank(bank_id, session=db)
-            logger.info(f"[BankService] Bank ID={bank_id} deleted successfully.")
-            return result
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"[BankService] Error deleting bank ID={bank_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to delete bank")
+        logger.warning(
+            "[BankService] Attempting to delete bank ID=%s",
+            bank_id,
+        )
 
-    async def decrease_balance(self, bank_id: int, amount: float, db: AsyncSession) -> Bank:
-        """Decrease balance with validation and tracking."""
-        logger.info(f"[BankService] Decreasing balance for Bank ID={bank_id} by {amount}")
-        try:
-            if amount <= 0:
-                logger.warning(f"[BankService] Invalid amount to decrease: {amount}")
+        async def _run() -> bool:
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
+            if not bank:
+                logger.warning(
+                    "[BankService] Bank not found for deletion ID=%s",
+                    bank_id,
+                )
+                return False
+
+            if float(bank.balance or 0.0) > 0.0:
+                logger.warning(
+                    "[BankService] Cannot delete bank ID=%s with balance=%s",
+                    bank_id,
+                    bank.balance,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Amount to decrease must be greater than zero."
+                    detail="Cannot delete a bank with balance greater than 0.",
                 )
-            async with db.begin():
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
-                if not bank:
-                    logger.warning(f"[BankService] Bank not found ID={bank_id}")
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank not found.")
-                if (bank.balance or 0) < amount:
-                    logger.warning(
-                        f"[BankService] Insufficient balance for ID={bank_id}. "
-                        f"Available={bank.balance}, Required={amount}"
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Insufficient balance: available {bank.balance}, required {amount}"
-                    )
-                updated = await self.bank_repository.decrease_balance(bank_id, amount, session=db)
-            logger.info(f"[BankService] Balance decreased successfully for Bank ID={bank_id}. New={updated.balance}")
-            return updated
+
+            result = await self.bank_repository.delete_bank(
+                bank_id,
+                session=db,
+            )
+            logger.info(
+                "[BankService] Bank ID=%s deleted successfully.",
+                bank_id,
+            )
+            return bool(result)
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            existed = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[BankService] Error decreasing balance ID={bank_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to decrease balance")
+            await db.rollback()
+            logger.error(
+                "[BankService] Error deleting bank ID=%s: %s",
+                bank_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete bank",
+            )
 
-    async def increase_balance(self, bank_id: int, amount: float, db: AsyncSession) -> Bank:
-        """Increase balance with validation and tracking."""
-        logger.info(f"[BankService] Increasing balance for Bank ID={bank_id} by {amount}")
-        try:
-            if amount <= 0:
-                logger.warning(f"[BankService] Invalid amount to increase: {amount}")
+        if not existed:
+            return False
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="bank",
+                    action="deleted",
+                    payload={"id": bank_id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[BankService] RT publish failed (delete_bank): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
+
+    async def decrease_balance(
+        self,
+        bank_id: int,
+        amount: float,
+        db: AsyncSession,
+    ) -> BankDTO:
+        logger.info(
+            "[BankService] Decreasing balance for Bank ID=%s by %s",
+            bank_id,
+            amount,
+        )
+
+        if amount <= 0:
+            logger.warning(
+                "[BankService] Invalid amount to decrease: %s",
+                amount,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Amount to decrease must be greater than zero.",
+            )
+
+        async def _run() -> BankDTO:
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
+            if not bank:
+                logger.warning(
+                    "[BankService] Bank not found ID=%s",
+                    bank_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Bank not found.",
+                )
+
+            if float(bank.balance or 0.0) < amount:
+                logger.warning(
+                    "[BankService] Insufficient balance for ID=%s. Available=%s, Required=%s",
+                    bank_id,
+                    bank.balance,
+                    amount,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Amount to increase must be greater than zero."
+                    detail=f"Insufficient balance: available {bank.balance}, required {amount}",
                 )
-            async with db.begin():
-                bank = await self.bank_repository.get_by_id(bank_id, session=db)
-                if not bank:
-                    logger.warning(f"[BankService] Bank not found ID={bank_id}")
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank not found.")
-                updated = await self.bank_repository.increase_balance(bank_id, amount, session=db)
-            logger.info(f"[BankService] Balance increased successfully for Bank ID={bank_id}. New={updated.balance}")
-            return updated
+
+            updated = await self.bank_repository.decrease_balance(
+                bank_id,
+                amount,
+                session=db,
+            )
+            logger.info(
+                "[BankService] Balance decreased successfully for Bank ID=%s. New=%s",
+                bank_id,
+                updated.balance,
+            )
+            return BankDTO(
+                id=updated.id,
+                name=updated.name,
+                account_number=updated.account_number,
+                balance=updated.balance,
+                created_at=updated.created_at,
+                updated_at=getattr(updated, "updated_at", None),
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
+            return dto
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[BankService] Error increasing balance ID={bank_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to increase balance")
+            await db.rollback()
+            logger.error(
+                "[BankService] Error decreasing balance ID=%s: %s",
+                bank_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to decrease balance",
+            )
+
+    async def increase_balance(
+        self,
+        bank_id: int,
+        amount: float,
+        db: AsyncSession,
+    ) -> BankDTO:
+        logger.info(
+            "[BankService] Increasing balance for Bank ID=%s by %s",
+            bank_id,
+            amount,
+        )
+
+        if amount <= 0:
+            logger.warning(
+                "[BankService] Invalid amount to increase: %s",
+                amount,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Amount to increase must be greater than zero.",
+            )
+
+        async def _run() -> BankDTO:
+            bank = await self.bank_repository.get_by_id(
+                bank_id,
+                session=db,
+            )
+            if not bank:
+                logger.warning(
+                    "[BankService] Bank not found ID=%s",
+                    bank_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Bank not found.",
+                )
+
+            updated = await self.bank_repository.increase_balance(
+                bank_id,
+                amount,
+                session=db,
+            )
+            logger.info(
+                "[BankService] Balance increased successfully for Bank ID=%s. New=%s",
+                bank_id,
+                updated.balance,
+            )
+            return BankDTO(
+                id=updated.id,
+                name=updated.name,
+                account_number=updated.account_number,
+                balance=updated.balance,
+                created_at=updated.created_at,
+                updated_at=getattr(updated, "updated_at", None),
+            )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
+            return dto
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[BankService] Error increasing balance ID=%s: %s",
+                bank_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to increase balance",
+            )
