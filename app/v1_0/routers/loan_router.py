@@ -3,6 +3,9 @@ from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+
+from app.core.security.deps import AuthContext, get_auth_context
+from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
@@ -24,18 +27,28 @@ router = APIRouter(prefix="/loans", tags=["Loans"])
 async def create_loan(
     request: LoanCreate,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: LoanService = Depends(
         Provide[ApplicationContainer.api_container.loan_service]
     ),
-):
-    logger.info(f"[LoanRouter] create payload={request.model_dump()}")
+) -> LoanDTO:
+    logger.info("[LoanRouter] create payload=%s", request.model_dump())
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create(request, db)
+        return await service.create(
+            payload=request,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[LoanRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create loan")
+        logger.error("[LoanRouter] create error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create loan",
+        )
 
 
 @router.get(
@@ -116,18 +129,33 @@ async def update_loan_amount(
     loan_id: int,
     new_amount: float = Body(..., embed=True, ge=0),
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: LoanService = Depends(
         Provide[ApplicationContainer.api_container.loan_service]
     ),
-):
-    logger.info(f"[LoanRouter] update_amount id={loan_id} new_amount={new_amount}")
+) -> LoanDTO:
+    logger.info(
+        "[LoanRouter] update_amount id=%s new_amount=%s",
+        loan_id,
+        new_amount,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.update_amount(loan_id, new_amount, db)
+        return await service.update_amount(
+            loan_id=loan_id,
+            new_amount=new_amount,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[LoanRouter] update_amount error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update loan amount")
+        logger.error("[LoanRouter] update_amount error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update loan amount",
+        )
 
 
 @router.delete(
@@ -139,22 +167,39 @@ async def update_loan_amount(
 async def delete_loan(
     loan_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: LoanService = Depends(
         Provide[ApplicationContainer.api_container.loan_service]
     ),
-):
-    logger.warning(f"[LoanRouter] delete id={loan_id}")
+) -> Dict[str, str]:
+    logger.warning("[LoanRouter] delete id=%s", loan_id)
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete(loan_id, db)
+        ok = await service.delete(
+            loan_id=loan_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[LoanRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete loan")
+        logger.error("[LoanRouter] delete error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete loan",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Loan not found")
-    return {"message": f"Loan with ID {loan_id} deleted successfully"}
+        raise HTTPException(
+            status_code=404,
+            detail="Loan not found",
+        )
+
+    return {
+        "message": f"Loan with ID {loan_id} deleted successfully"
+    }
+
 
 @router.post(
     "/apply-payment",
@@ -166,21 +211,40 @@ async def delete_loan(
 async def apply_payment(
     payload: LoanApplyPaymentIn,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: LoanService = Depends(
         Provide[ApplicationContainer.api_container.loan_service]
     ),
-):
+) -> Union[LoanDTO, Dict[str, Any]]:
     logger.info(
         "[LoanRouter] apply_payment loan_id=%s amount=%s bank_id=%s",
-        payload.loan_id, payload.amount, payload.bank_id
+        payload.loan_id,
+        payload.amount,
+        payload.bank_id,
     )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        res = await service.apply_payment(payload, db)
+        res = await service.apply_payment(
+            payload=payload,
+            db=db,
+            channel_id=channel_id,
+        )
         if res is None:
-            return {"deleted": True, "loan_id": payload.loan_id}
+            return {
+                "deleted": True,
+                "loan_id": payload.loan_id,
+            }
         return res
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[LoanRouter] apply_payment error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to apply loan payment")
+        logger.error(
+            "[LoanRouter] apply_payment error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to apply loan payment",
+        )

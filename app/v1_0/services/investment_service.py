@@ -9,6 +9,7 @@ from app.core.logger import logger
 from app.v1_0.repositories import InvestmentRepository, TransactionTypeRepository, BankRepository
 from app.v1_0.schemas import InvestmentCreate, TransactionCreate, InvestmentAddBalanceIn, InvestmentWithdrawIn
 from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
+from app.core.realtime import publish_realtime_event
 from .transaction_service import TransactionService
 
 class InvestmentService:
@@ -29,47 +30,99 @@ class InvestmentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found.")
         return inv
 
-    async def create(self, payload: InvestmentCreate, db: AsyncSession) -> InvestmentDTO:
-        logger.info("[InvestmentService] Creating investment: %s", payload.model_dump())
-        try:
-            async with db.begin():
-                i = await self.investment_repository.create_investment(payload, db)
+    async def create(
+        self,
+        payload: InvestmentCreate,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> InvestmentDTO:
+        logger.info(
+            "[InvestmentService] Creating investment: %s",
+            payload.model_dump(),
+        )
 
-                initial = float(payload.balance or 0.0)
-                if initial > 0:
-                    if not getattr(payload, "bank_id", None):
-                        raise HTTPException(
-                            status_code=400,
-                            detail="bank_id is required when initial balance > 0",
-                        )
+        async def _run() -> InvestmentDTO:
+            i = await self.investment_repository.create_investment(payload, db)
 
-                    await self.bank_repository.decrease_balance(payload.bank_id, initial, db)
-
-                    t = await self.transaction_type_repository.get_by_name("Aporte Inversion", session=db)
-                    type_id = t.id if t else None
-
-                    tx = TransactionCreate(
-                        bank_id=payload.bank_id,
-                        amount=initial, 
-                        type_id=type_id,
-                        description=f"Aporte inicial a inversión {i.name}",
-                        is_auto=True,
-                        created_at=datetime.now(),
+            initial = float(payload.balance or 0.0)
+            if initial > 0:
+                bank_id = getattr(payload, "bank_id", None)
+                if not bank_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="bank_id is required when initial balance > 0",
                     )
-                    await self.transaction_service.insert_transaction(tx, db)
 
-            logger.info("[InvestmentService] Investment created ID=%s", i.id)
+                await self.bank_repository.decrease_balance(
+                    bank_id,
+                    initial,
+                    db,
+                )
+
+                t = await self.transaction_type_repository.get_by_name(
+                    "Aporte Inversion",
+                    session=db,
+                )
+                type_id = t.id if t else None
+
+                tx = TransactionCreate(
+                    bank_id=bank_id,
+                    amount=initial,
+                    type_id=type_id,
+                    description=f"Aporte inicial a inversión {i.name}",
+                    is_auto=True,
+                    created_at=datetime.now(),
+                )
+                await self.transaction_service.insert_transaction(tx, db)
+
+            logger.info(
+                "[InvestmentService] Investment created ID=%s",
+                i.id,
+            )
+
             return InvestmentDTO(
                 id=i.id,
                 name=i.name,
                 balance=i.balance,
                 maturity_date=i.maturity_date,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error("[InvestmentService] Create failed: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to create investment")
+            await db.rollback()
+            logger.error(
+                "[InvestmentService] Create failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create investment",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="investment",
+                    action="created",
+                    payload={"id": dto.id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[InvestmentService] RT publish failed (create): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
 
     async def get(self, investment_id: int, db: AsyncSession) -> InvestmentDTO:
         logger.debug(f"[InvestmentService] Get investment ID={investment_id}")
@@ -135,150 +188,415 @@ class InvestmentService:
             has_prev=page > 1,
         )
 
-    async def update_balance(self, investment_id: int, new_balance: float, db: AsyncSession) -> InvestmentDTO:
-        logger.info(f"[InvestmentService] Update balance ID={investment_id} -> {new_balance}")
-        try:
-            if new_balance < 0:
-                raise HTTPException(status_code=400, detail="Balance must be >= 0.")
-            async with db.begin():
-                i = await self.investment_repository.update_balance(investment_id, new_balance, db)
+    async def update_balance(
+        self,
+        investment_id: int,
+        new_balance: float,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> InvestmentDTO:
+        logger.info(
+            "[InvestmentService] Update balance ID=%s -> %s",
+            investment_id,
+            new_balance,
+        )
+
+        if new_balance < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Balance must be >= 0.",
+            )
+
+        async def _run() -> InvestmentDTO:
+            i = await self.investment_repository.update_balance(
+                investment_id,
+                new_balance,
+                db,
+            )
             if not i:
-                raise HTTPException(status_code=404, detail="Investment not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found.",
+                )
             return InvestmentDTO(
                 id=i.id,
                 name=i.name,
                 balance=i.balance,
                 maturity_date=i.maturity_date,
             )
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[InvestmentService] Update balance failed ID={investment_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to update investment balance")
-        
-    async def add_balance(self, payload: InvestmentAddBalanceIn, db: AsyncSession) -> InvestmentDTO:
+            await db.rollback()
+            logger.error(
+                "[InvestmentService] Update balance failed ID=%s: %s",
+                investment_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update investment balance",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="investment",
+                    action="updated",
+                    payload={"id": dto.id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[InvestmentService] RT publish failed (update_balance): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def add_balance(
+        self,
+        payload: InvestmentAddBalanceIn,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> InvestmentDTO:
         investment_id = payload.investment_id
         amount = payload.amount
         kind: Literal["interest", "topup"] = payload.kind
 
         if amount <= 0:
-            raise HTTPException(status_code=400, detail="amount must be > 0")
+            raise HTTPException(
+                status_code=400,
+                detail="amount must be > 0",
+            )
 
-        async with db.begin():
-            inv_row = await self.investment_repository.get_by_id(investment_id, db)
+        async def _run() -> InvestmentDTO:
+            inv_row = await self.investment_repository.get_by_id(
+                investment_id,
+                db,
+            )
             if not inv_row:
-                raise HTTPException(status_code=404, detail="Investment not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found.",
+                )
             if not inv_row.bank_id:
-                raise HTTPException(status_code=400, detail="Investment has no bank bound.")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Investment has no bank bound.",
+                )
 
-            inv = await self.investment_repository.increment_balance(investment_id, amount, db)
+            inv = await self.investment_repository.increment_balance(
+                investment_id,
+                amount,
+                db,
+            )
             if not inv:
-                raise HTTPException(status_code=404, detail="Investment not found after update.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found after update.",
+                )
 
             if kind == "interest":
-                t = await self.transaction_type_repository.get_by_name("Interes Inversion", session=db)
+                t = await self.transaction_type_repository.get_by_name(
+                    "Interes Inversion",
+                    session=db,
+                )
                 type_id = t.id if t else None
                 tx = TransactionCreate(
                     bank_id=inv_row.bank_id,
                     amount=amount,
                     type_id=type_id,
-                    description=payload.description or f"Interes Inversion {inv_row.name}",
+                    description=payload.description
+                    or f"Interes Inversion {inv_row.name}",
                     is_auto=False,
                     created_at=datetime.now(),
                 )
-            else:  
+            else:
                 if payload.source_bank_id is None:
-                    raise HTTPException(status_code=400, detail="source_bank_id is required for kind='topup'")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="source_bank_id is required for kind='topup'",
+                    )
                 source_bank_id: int = payload.source_bank_id
 
-                await self.bank_repository.decrease_balance(source_bank_id, amount, db)
+                await self.bank_repository.decrease_balance(
+                    source_bank_id,
+                    amount,
+                    db,
+                )
 
-                t = await self.transaction_type_repository.get_by_name("Retiro", session=db)
+                t = await self.transaction_type_repository.get_by_name(
+                    "Retiro",
+                    session=db,
+                )
                 type_id = t.id if t else None
                 tx = TransactionCreate(
                     bank_id=source_bank_id,
-                    amount=amount, 
+                    amount=amount,
                     type_id=type_id,
-                    description=payload.description or f"Aporte a inversión {inv_row.name}",
+                    description=payload.description
+                    or f"Aporte a inversión {inv_row.name}",
                     is_auto=False,
-                    created_at=datetime.now(),  
+                    created_at=datetime.now(),
                 )
 
             await self.transaction_service.insert_transaction(tx, db)
 
-        return InvestmentDTO(
-            id=inv.id,
-            name=inv.name,
-            balance=inv.balance,
-            maturity_date=inv.maturity_date,
-        )
+            return InvestmentDTO(
+                id=inv.id,
+                name=inv.name,
+                balance=inv.balance,
+                maturity_date=inv.maturity_date,
+            )
 
-    async def withdraw(self, payload: InvestmentWithdrawIn, db: AsyncSession) -> Optional[InvestmentDTO]:
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            dto = await _run()
+            await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[InvestmentService] add_balance failed inv_id=%s: %s",
+                investment_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to add investment balance",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="investment",
+                    action="updated",
+                    payload={"id": dto.id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[InvestmentService] RT publish failed (add_balance): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def withdraw(
+        self,
+        payload: InvestmentWithdrawIn,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> Optional[InvestmentDTO]:
         inv_id = payload.investment_id
 
-        async with db.begin():
+        async def _run() -> tuple[Optional[InvestmentDTO], bool]:
             inv_row = await self.investment_repository.get_by_id(inv_id, db)
             if not inv_row:
-                raise HTTPException(status_code=404, detail="Investment not found.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found.",
+                )
 
             current_balance = float(inv_row.balance or 0.0)
             if current_balance <= 0:
-                raise HTTPException(status_code=400, detail="Investment has zero balance.")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Investment has zero balance.",
+                )
 
-            amount = current_balance if payload.kind == "full" else float(payload.amount)  # type: ignore[arg-type]
+            amount = (
+                current_balance
+                if payload.kind == "full"
+                else float(payload.amount)  # type: ignore[arg-type]
+            )
             if amount <= 0:
-                raise HTTPException(status_code=400, detail="amount must be > 0")
+                raise HTTPException(
+                    status_code=400,
+                    detail="amount must be > 0",
+                )
             if amount > current_balance:
-                raise HTTPException(status_code=400, detail="amount exceeds current balance")
+                raise HTTPException(
+                    status_code=400,
+                    detail="amount exceeds current balance",
+                )
 
             dest_bank_id = payload.destination_bank_id or inv_row.bank_id
             if not dest_bank_id:
-                raise HTTPException(status_code=400, detail="destination_bank_id required")
+                raise HTTPException(
+                    status_code=400,
+                    detail="destination_bank_id required",
+                )
 
-            inv_after = await self.investment_repository.decrease_balance(inv_id, amount, db)
+            inv_after = await self.investment_repository.decrease_balance(
+                inv_id,
+                amount,
+                db,
+            )
             if not inv_after:
-                raise HTTPException(status_code=404, detail="Investment not found after update.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found after update.",
+                )
 
-            await self.bank_repository.increase_balance(dest_bank_id, amount, db)
+            await self.bank_repository.increase_balance(
+                dest_bank_id,
+                amount,
+                db,
+            )
 
-            tx_name = "Retiro"
-            t = await self.transaction_type_repository.get_by_name(tx_name, session=db)
+            t = await self.transaction_type_repository.get_by_name(
+                "Retiro",
+                session=db,
+            )
             type_id = t.id if t else None
 
             tx = TransactionCreate(
                 bank_id=dest_bank_id,
-                amount=amount, 
+                amount=amount,
                 type_id=type_id,
-                description=payload.description or (
-                    f"{tx_name} {inv_row.name}" if tx_name == "Liquidacion Inversion"
-                    else f"Retiro de inversión {inv_row.name}"
-                ),
+                description=payload.description
+                or f"Retiro de inversión {inv_row.name}",
                 is_auto=True,
                 created_at=datetime.now(),
             )
             await self.transaction_service.insert_transaction(tx, db)
 
             if float(inv_after.balance or 0.0) == 0.0:
-                await self.investment_repository.delete_investment(inv_id, db)
-                return None  
+                await self.investment_repository.delete_investment(
+                    inv_id,
+                    db,
+                )
+                return None, True
 
-        return InvestmentDTO(
-            id=inv_after.id,
-            name=inv_after.name,
-            balance=inv_after.balance,
-            maturity_date=inv_after.maturity_date,
-        )
+            return (
+                InvestmentDTO(
+                    id=inv_after.id,
+                    name=inv_after.name,
+                    balance=inv_after.balance,
+                    maturity_date=inv_after.maturity_date,
+                ),
+                False,
+            )
 
-    async def delete(self, investment_id: int, db: AsyncSession) -> bool:
-        logger.warning(f"[InvestmentService] Delete investment ID={investment_id}")
+        if not db.in_transaction():
+            await db.begin()
         try:
-            async with db.begin():
-                ok = await self.investment_repository.delete_investment(investment_id, db)
-            if not ok:
-                raise HTTPException(status_code=404, detail="Investment not found.")
-            return True
+            dto, deleted = await _run()
+            await db.commit()
         except HTTPException:
+            await db.rollback()
             raise
         except Exception as e:
-            logger.error(f"[InvestmentService] Delete failed ID={investment_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to delete investment")
+            await db.rollback()
+            logger.error(
+                "[InvestmentService] withdraw failed inv_id=%s: %s",
+                inv_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to withdraw from investment",
+            )
+
+        if channel_id:
+            try:
+                if deleted:
+                    await publish_realtime_event(
+                        channel_id=channel_id,
+                        resource="investment",
+                        action="deleted",
+                        payload={"id": inv_id},
+                    )
+                else:
+                    await publish_realtime_event(
+                        channel_id=channel_id,
+                        resource="investment",
+                        action="updated",
+                        payload={"id": dto.id},  # type: ignore[arg-type]
+                    )
+            except Exception as e:
+                logger.error(
+                    "[InvestmentService] RT publish failed (withdraw): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return dto
+
+    async def delete(
+        self,
+        investment_id: int,
+        db: AsyncSession,
+        channel_id: Optional[str] = None,
+    ) -> bool:
+        logger.warning(
+            "[InvestmentService] Delete investment ID=%s",
+            investment_id,
+        )
+
+        async def _run() -> bool:
+            ok = await self.investment_repository.delete_investment(
+                investment_id,
+                db,
+            )
+            if not ok:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Investment not found.",
+                )
+            return True
+
+        if not db.in_transaction():
+            await db.begin()
+        try:
+            ok = await _run()
+            await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "[InvestmentService] Delete failed ID=%s: %s",
+                investment_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete investment",
+            )
+
+        if channel_id:
+            try:
+                await publish_realtime_event(
+                    channel_id=channel_id,
+                    resource="investment",
+                    action="deleted",
+                    payload={"id": investment_id},
+                )
+            except Exception as e:
+                logger.error(
+                    "[InvestmentService] RT publish failed (delete): %s",
+                    e,
+                    exc_info=True,
+                )
+
+        return True
