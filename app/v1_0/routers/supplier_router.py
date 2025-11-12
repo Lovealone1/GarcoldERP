@@ -10,6 +10,8 @@ from app.core.logger import logger
 from app.v1_0.schemas import SupplierCreate
 from app.v1_0.entities import SupplierDTO, SupplierPageDTO
 from app.v1_0.services import SupplierService
+from app.core.security.deps import AuthContext, get_auth_context
+from app.core.security.realtime_auth import build_channel_id_from_auth
 
 router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
@@ -23,16 +25,35 @@ router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 async def create_supplier(
     request: SupplierCreate,
     db: AsyncSession = Depends(get_db),
-    service: SupplierService = Depends(Provide[ApplicationContainer.api_container.supplier_service]),
-):
-    logger.info(f"[SupplierRouter] create payload={request.model_dump()}")
+    auth_ctx: AuthContext = Depends(get_auth_context),
+    service: SupplierService = Depends(
+        Provide[ApplicationContainer.api_container.supplier_service]
+    ),
+) -> SupplierDTO:
+    logger.info(
+        "[SupplierRouter] create payload=%s",
+        request.model_dump(),
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create(request, db)
+        return await service.create(
+            payload=request,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SupplierRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create supplier")
+        logger.error(
+            "[SupplierRouter] create error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create supplier",
+        )
 
 @router.get(
     "/by-id/{supplier_id}",
@@ -103,16 +124,38 @@ async def update_supplier(
     supplier_id: int,
     data: Dict[str, Any] = Body(..., description="Partial fields to update"),
     db: AsyncSession = Depends(get_db),
-    service: SupplierService = Depends(Provide[ApplicationContainer.api_container.supplier_service]),
-):
-    logger.info(f"[SupplierRouter] update id={supplier_id} data={data}")
+    auth_ctx: AuthContext = Depends(get_auth_context),
+    service: SupplierService = Depends(
+        Provide[ApplicationContainer.api_container.supplier_service]
+    ),
+) -> SupplierDTO:
+    logger.info(
+        "[SupplierRouter] update id=%s data=%s",
+        supplier_id,
+        data,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.update_partial(supplier_id, data, db)
+        return await service.update_partial(
+            supplier_id=supplier_id,
+            data=data,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SupplierRouter] update error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update supplier")
+        logger.error(
+            "[SupplierRouter] update error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update supplier",
+        )
+
 
 @router.delete(
     "/by-id/{supplier_id}",
@@ -123,18 +166,42 @@ async def update_supplier(
 async def delete_supplier(
     supplier_id: int,
     db: AsyncSession = Depends(get_db),
-    service: SupplierService = Depends(Provide[ApplicationContainer.api_container.supplier_service]),
-):
-    logger.warning(f"[SupplierRouter] delete id={supplier_id}")
+    auth_ctx: AuthContext = Depends(get_auth_context),
+    service: SupplierService = Depends(
+        Provide[ApplicationContainer.api_container.supplier_service]
+    ),
+) -> Dict[str, str]:
+    logger.warning(
+        "[SupplierRouter] delete id=%s",
+        supplier_id,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete(supplier_id, db)
+        ok = await service.delete(
+            supplier_id=supplier_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SupplierRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete supplier")
+        logger.error(
+            "[SupplierRouter] delete error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete supplier",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Supplier not found",
+        )
 
-    return {"message": f"Supplier with ID {supplier_id} deleted successfully"}
+    return {
+        "message": f"Supplier with ID {supplier_id} deleted successfully"
+    }
