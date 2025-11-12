@@ -1,12 +1,13 @@
 from math import ceil
 from decimal import Decimal
-from fastapi import HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import re
 
-from app.core.realtime import publish_realtime_event
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logger import logger
+from app.core.realtime import publish_realtime_event
 from app.v1_0.schemas import TransactionCreate
 from app.v1_0.entities import TransactionDTO, TransactionPageDTO, TransactionViewDTO
 from app.v1_0.models import Transaction
@@ -14,7 +15,7 @@ from app.v1_0.repositories import (
     TransactionRepository,
     TransactionTypeRepository,
     BankRepository,
-    CustomerRepository
+    CustomerRepository,
 )
 
 class TransactionService:
@@ -23,7 +24,7 @@ class TransactionService:
         transaction_repository: TransactionRepository,
         transaction_type_repository: TransactionTypeRepository,
         bank_repository: BankRepository,
-        customer_repository: CustomerRepository
+        customer_repository: CustomerRepository,
     ) -> None:
         self.tx_repo = transaction_repository
         self.type_repo = transaction_type_repository
@@ -37,13 +38,30 @@ class TransactionService:
         db: AsyncSession,
     ) -> Transaction:
         """
-        Helper: thin passthrough to repository. No validation, no transaction block.
-        Used by other services that already manage their own logic/transactions.
+        Insert a transaction without business validation or transaction block.
+
+        Intended for internal use by other services that already handle:
+        - Domain validation.
+        - Surrounding database transaction.
+
+        Args:
+            payload: TransactionCreate payload with transaction data.
+            db: Active async database session.
+
+        Returns:
+            The created Transaction ORM instance.
+
+        Raises:
+            Exception: If the repository operation fails.
         """
         try:
             return await self.tx_repo.create_transaction(payload, session=db)
         except Exception as e:
-            logger.error(f"[TransactionService] insert_transaction failed: {e}", exc_info=True)
+            logger.error(
+                "[TransactionService] insert_transaction failed: %s",
+                e,
+                exc_info=True,
+            )
             raise
 
     async def create(
@@ -52,6 +70,27 @@ class TransactionService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> TransactionDTO:
+        """
+        Create a manual bank transaction and update the bank balance.
+
+        Supported types (by name of TransactionType):
+        - "Ingreso": Increases bank balance.
+        - "Retiro": Decreases bank balance (requires sufficient funds).
+
+        Args:
+            payload: TransactionCreate with bank_id, amount, type_id, and description.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            TransactionDTO representing the created transaction.
+
+        Raises:
+            HTTPException:
+                400 if type_id is missing, unsupported, or insufficient funds.
+                404 if bank or transaction type does not exist.
+                500 if creation fails.
+        """
         type_id = payload.type_id
         if type_id is None:
             raise HTTPException(
@@ -155,7 +194,7 @@ class TransactionService:
                 )
 
         return dto
-        
+
     async def delete_purchase_payment_transaction(
         self,
         payment_id: int,
@@ -163,8 +202,17 @@ class TransactionService:
         db: AsyncSession,
     ) -> int:
         """
-        Helper: find and delete the transaction linked to a purchase payment.
-        No transaction block here (caller manages it). Returns deleted tx ID, or 0 if none.
+        Delete the transaction linked to a purchase payment.
+
+        No explicit transaction block; caller must handle it.
+
+        Args:
+            payment_id: Purchase payment identifier.
+            purchase_id: Related purchase identifier.
+            db: Active async database session.
+
+        Returns:
+            ID of the deleted transaction, or 0 if none was found.
         """
         try:
             tx_id = await self.tx_repo.get_transaction_id_for_purchase_payment(
@@ -179,12 +227,12 @@ class TransactionService:
             return tx_id
         except Exception as e:
             logger.error(
-                f"[TransactionService] delete_purchase_payment_transaction "
+                "[TransactionService] delete_purchase_payment_transaction "
                 f"failed (payment_id={payment_id}, purchase_id={purchase_id}): {e}",
                 exc_info=True,
             )
             return 0
-        
+
     async def delete_sale_payment_transaction(
         self,
         payment_id: int,
@@ -192,8 +240,17 @@ class TransactionService:
         db: AsyncSession,
     ) -> int:
         """
-        Helper: find and delete the transaction linked to a sale payment.
-        Caller manages the surrounding transaction. Returns deleted tx ID, or 0.
+        Delete the transaction linked to a sale payment.
+
+        Caller manages the surrounding transaction.
+
+        Args:
+            payment_id: Sale payment identifier.
+            sale_id: Related sale identifier.
+            db: Active async database session.
+
+        Returns:
+            ID of the deleted transaction, or 0 if none was found.
         """
         try:
             tx_id = await self.tx_repo.get_transaction_id_for_sale_payment(
@@ -208,55 +265,32 @@ class TransactionService:
             return tx_id
         except Exception as e:
             logger.error(
-                f"[TransactionService] delete_sale_payment_transaction "
+                "[TransactionService] delete_sale_payment_transaction "
                 f"failed (payment_id={payment_id}, sale_id={sale_id}): {e}",
                 exc_info=True,
             )
             return 0
-        
+
     async def delete_sale_transactions(
         self,
         sale_id: int,
         db: AsyncSession,
     ) -> int:
-        try:
-            ids = await self.tx_repo.get_ids_for_sale_payment(sale_id, session=db)
-            deleted = 0
-            for tx_id in ids:
-                await self.tx_repo.delete_transaction(tx_id, session=db)
-                deleted += 1
-            return deleted
-        except Exception as e:
-            logger.error(f"[TransactionService] delete_sale_transactions failed (sale_id={sale_id}): {e}", exc_info=True)
-            return 0
+        """
+        Delete all transactions linked to a sale.
 
-    async def delete_purchase_transactions(
-        self,
-        purchase_id: int,
-        db: AsyncSession,
-    ) -> int:
-        try:
-            ids = await self.tx_repo.get_ids_for_purchase_payment(purchase_id, session=db)
-            deleted = 0
-            for tx_id in ids:
-                await self.tx_repo.delete_transaction(tx_id, session=db)
-                deleted += 1
-            return deleted
-        except Exception as e:
-            logger.error(f"[TransactionService] delete_purchase_transactions failed (purchase_id={purchase_id}): {e}", exc_info=True)
-            return 0
-        
-    async def delete_expense_transactions(
-        self,
-        expense_id: int,
-        db: AsyncSession,
-    ) -> int:
-        """
-        Helper: delete all transactions linked to an expense.
-        No transaction block here. Returns count deleted.
+        Args:
+            sale_id: Sale identifier.
+            db: Active async database session.
+
+        Returns:
+            Number of deleted transactions.
         """
         try:
-            ids = await self.tx_repo.get_ids_for_expense(expense_id, session=db)
+            ids = await self.tx_repo.get_ids_for_sale_payment(
+                sale_id,
+                session=db,
+            )
             deleted = 0
             for tx_id in ids:
                 await self.tx_repo.delete_transaction(tx_id, session=db)
@@ -264,47 +298,177 @@ class TransactionService:
             return deleted
         except Exception as e:
             logger.error(
-                f"[TransactionService] delete_expense_transactions failed (expense_id={expense_id}): {e}",
+                "[TransactionService] delete_sale_transactions failed (sale_id=%s): %s",
+                sale_id,
+                e,
                 exc_info=True,
             )
             return 0
-        
-    def _extract_abono_nombre(self, desc: Optional[str]) -> Optional[str]:
-        """Devuelve el nombre si la descripción es 'Abono saldo <NOMBRE>'."""
+
+    async def delete_purchase_transactions(
+        self,
+        purchase_id: int,
+        db: AsyncSession,
+    ) -> int:
+        """
+        Delete all transactions linked to a purchase.
+
+        Args:
+            purchase_id: Purchase identifier.
+            db: Active async database session.
+
+        Returns:
+            Number of deleted transactions.
+        """
+        try:
+            ids = await self.tx_repo.get_ids_for_purchase_payment(
+                purchase_id,
+                session=db,
+            )
+            deleted = 0
+            for tx_id in ids:
+                await self.tx_repo.delete_transaction(tx_id, session=db)
+                deleted += 1
+            return deleted
+        except Exception as e:
+            logger.error(
+                "[TransactionService] delete_purchase_transactions failed (purchase_id=%s): %s",
+                purchase_id,
+                e,
+                exc_info=True,
+            )
+            return 0
+
+    async def delete_expense_transactions(
+        self,
+        expense_id: int,
+        db: AsyncSession,
+    ) -> int:
+        """
+        Delete all transactions linked to an expense.
+
+        No explicit transaction block; caller must handle it.
+
+        Args:
+            expense_id: Expense identifier.
+            db: Active async database session.
+
+        Returns:
+            Number of deleted transactions.
+        """
+        try:
+            ids = await self.tx_repo.get_ids_for_expense(
+                expense_id,
+                session=db,
+            )
+            deleted = 0
+            for tx_id in ids:
+                await self.tx_repo.delete_transaction(tx_id, session=db)
+                deleted += 1
+            return deleted
+        except Exception as e:
+            logger.error(
+                "[TransactionService] delete_expense_transactions failed (expense_id=%s): %s",
+                expense_id,
+                e,
+                exc_info=True,
+            )
+            return 0
+
+    def _extract_abono_nombre(
+        self,
+        desc: Optional[str],
+    ) -> Optional[str]:
+        """
+        Extract the customer name from descriptions in the form:
+        'Abono saldo <NAME>'.
+
+        Args:
+            desc: Description text.
+
+        Returns:
+            Extracted name if format matches, otherwise None.
+        """
         if not desc:
             return None
-        m = re.match(r'^\s*abono\s+saldo\s+(.+)\s*$', desc.strip(), re.IGNORECASE)
+        m = re.match(
+            r"^\s*abono\s+saldo\s+(.+)\s*$",
+            desc.strip(),
+            re.IGNORECASE,
+        )
         return m.group(1).strip() if m else None
 
-    async def _try_reverse_abono_saldo(self, tx, db: AsyncSession) -> bool:
+    async def _try_reverse_abono_saldo(
+        self,
+        tx: Transaction,
+        db: AsyncSession,
+    ) -> bool:
         """
-        Reversa específica de 'Abono saldo <NOMBRE>':
-          ↓ banco, ↑ saldo cliente. True si aplicó, False si no.
+        Try to reverse a customer balance payment of the form 'Abono saldo <NAME>'.
+
+        Logic:
+        - Decrease bank balance by transaction amount.
+        - Increase the matched customer's balance by the same amount.
+
+        Args:
+            tx: Transaction candidate to reverse.
+            db: Active async database session.
+
+        Returns:
+            True if the transaction was recognized and reversed, False otherwise.
+
+        Raises:
+            HTTPException:
+                404 if bank or customer cannot be resolved.
+                400 if bank has insufficient balance to reverse.
         """
         nombre = self._extract_abono_nombre(tx.description)
         if not nombre:
             return False
 
-        bank = await self.bank_repo.get_by_id(tx.bank_id, session=db)
+        bank = await self.bank_repo.get_by_id(
+            tx.bank_id,
+            session=db,
+        )
         if not bank:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"Banco {tx.bank_id} no encontrado")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Banco {tx.bank_id} no encontrado",
+            )
 
         amount = float(tx.amount or 0.0)
         if amount <= 0:
-            return True  
+            return True
 
-        customer = await self.customer_repository.get_by_name(nombre, session=db)
+        customer = await self.customer_repository.get_by_name(
+            nombre,
+            session=db,
+        )
         if not customer:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f'Cliente con nombre exacto "{nombre}" no encontrado')
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f'Cliente con nombre exacto "{nombre}" no encontrado',
+            )
 
         if (bank.balance or 0.0) < amount:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"Saldo insuficiente para revertir abono (banco {bank.id} tiene {bank.balance:.2f})")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Saldo insuficiente para revertir abono "
+                    f"(banco {bank.id} tiene {bank.balance:.2f})"
+                ),
+            )
 
-        await self.bank_repo.decrease_balance(bank.id, amount, session=db)
-        await self.customer_repository.increase_balance(customer.id, amount, session=db)
+        await self.bank_repo.decrease_balance(
+            bank.id,
+            amount,
+            session=db,
+        )
+        await self.customer_repository.increase_balance(
+            customer.id,
+            amount,
+            session=db,
+        )
         return True
 
     async def delete_manual_transaction(
@@ -314,10 +478,29 @@ class TransactionService:
         channel_id: Optional[str] = None,
     ) -> bool:
         """
-        Revierte:
-        - Si es 'Abono saldo <NOMBRE>': ajusta banco/cliente y elimina.
-        - Si es 'ingreso'/'retiro': revierte impacto en banco según tipo.
-        Solo aplica para transacciones manuales según tu lógica actual.
+        Delete a manual transaction and revert its financial impact when possible.
+
+        Rules:
+        - If description matches 'Abono saldo <NAME>':
+            - Reverse customer payment (decrease bank, increase customer balance).
+        - Else if type is 'Ingreso':
+            - Decrease bank balance by transaction amount (requires sufficient funds).
+        - Else if type is 'Retiro':
+            - Increase bank balance by transaction amount.
+        - Only manual domain logic is applied (is_auto should be handled by caller).
+
+        Args:
+            transaction_id: Identifier of the transaction to delete.
+            db: Active async database session.
+            channel_id: Optional realtime channel identifier to publish events.
+
+        Returns:
+            True if the transaction existed and was deleted, False otherwise.
+
+        Raises:
+            HTTPException:
+                400 or 404 for validation and consistency errors.
+                500 if the deletion flow fails.
         """
 
         async def _run() -> bool:
@@ -328,7 +511,6 @@ class TransactionService:
             if not tx:
                 return False
 
-            # Caso especial: abono saldo cliente
             if await self._try_reverse_abono_saldo(tx, db):
                 await self.tx_repo.delete(tx, session=db)
                 return True
@@ -361,7 +543,7 @@ class TransactionService:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=(
-                            f"Saldo insuficiente para revertir ingreso "
+                            "Saldo insuficiente para revertir ingreso "
                             f"(banco {bank.id} tiene {bank.balance:.2f})"
                         ),
                     )
@@ -425,21 +607,50 @@ class TransactionService:
                 )
 
         return True
-    
-    async def list_transactions(self, page: int, db: AsyncSession) -> TransactionPageDTO:
+
+    async def list_transactions(
+        self,
+        page: int,
+        db: AsyncSession,
+    ) -> TransactionPageDTO:
+        """
+        List transactions in a paginated format with resolved relations.
+
+        For each transaction includes:
+        - Bank name or fallback.
+        - Type name or "Desconocido".
+        - Amount, description, created_at, is_auto.
+
+        Args:
+            page: Page number to retrieve (1-based).
+            db: Active async database session.
+
+        Returns:
+            TransactionPageDTO with items and pagination metadata.
+        """
         page_size = self.PAGE_SIZE
         offset = max(page - 1, 0) * page_size
 
-        items, total, *rest = await self.tx_repo.list_paginated(
-            offset=offset, limit=page_size, session=db
+        items, total, *_ = await self.tx_repo.list_paginated(
+            offset=offset,
+            limit=page_size,
+            session=db,
         )
 
         view_items = [
             TransactionViewDTO(
                 id=t.id,
-                bank=(t.bank.name if getattr(t, "bank", None) else f"Bank {t.bank_id}"),
-                amount=float(t.amount) if t.amount is not None else 0.0,  
-                type_str=(t.type.name if getattr(t, "type", None) else "Desconocido"),
+                bank=(
+                    t.bank.name
+                    if getattr(t, "bank", None)
+                    else f"Bank {t.bank_id}"
+                ),
+                amount=float(t.amount) if t.amount is not None else 0.0,
+                type_str=(
+                    t.type.name
+                    if getattr(t, "type", None)
+                    else "Desconocido"
+                ),
                 description=getattr(t, "description", None),
                 created_at=t.created_at,
                 is_auto=t.is_auto,
