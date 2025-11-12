@@ -1,33 +1,65 @@
-from typing import List, Optional
 from math import ceil
+from typing import List, Optional, Literal
+from datetime import datetime
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
-from typing import Literal
 
 from app.core.logger import logger
-from app.v1_0.repositories import InvestmentRepository, TransactionTypeRepository, BankRepository
-from app.v1_0.schemas import InvestmentCreate, TransactionCreate, InvestmentAddBalanceIn, InvestmentWithdrawIn
-from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
 from app.core.realtime import publish_realtime_event
+from app.v1_0.entities import InvestmentDTO, InvestmentPageDTO
+from app.v1_0.repositories import (
+    InvestmentRepository,
+    TransactionTypeRepository,
+    BankRepository,
+)
+from app.v1_0.schemas import (
+    InvestmentCreate,
+    TransactionCreate,
+    InvestmentAddBalanceIn,
+    InvestmentWithdrawIn,
+)
 from .transaction_service import TransactionService
 
+
 class InvestmentService:
-    def __init__(self, 
+    def __init__(
+        self,
         investment_repository: InvestmentRepository,
         transaction_type_repository: TransactionTypeRepository,
         transaction_service: TransactionService,
-        bank_repository: BankRepository) -> None:
+        bank_repository: BankRepository,
+    ) -> None:
         self.investment_repository = investment_repository
         self.transaction_type_repository = transaction_type_repository
         self.transaction_service = transaction_service
         self.bank_repository = bank_repository
         self.PAGE_SIZE = 10
 
-    async def _require(self, investment_id: int, db: AsyncSession):
+    async def _require(
+        self,
+        investment_id: int,
+        db: AsyncSession,
+    ):
+        """
+        Ensure that an investment exists; otherwise raise 404.
+
+        Args:
+            investment_id: Investment identifier to fetch.
+            db: Active async database session.
+
+        Returns:
+            ORM investment entity.
+
+        Raises:
+            HTTPException: With 404 status if the investment does not exist.
+        """
         inv = await self.investment_repository.get_by_id(investment_id, db)
         if not inv:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Investment not found.",
+            )
         return inv
 
     async def create(
@@ -36,6 +68,29 @@ class InvestmentService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> InvestmentDTO:
+        """
+        Create a new investment and optionally register the initial contribution.
+
+        Behavior:
+        - Create investment record.
+        - If payload.balance > 0:
+            - Require bank_id.
+            - Decrease the specified bank balance by that amount.
+            - Insert an automatic "Aporte Inversion" transaction.
+
+        Args:
+            payload: InvestmentCreate with name, balance, bank_id, and dates.
+            db: Active async database session.
+            channel_id: Optional realtime channel to publish "investment:created".
+
+        Returns:
+            InvestmentDTO for the created investment.
+
+        Raises:
+            HTTPException:
+                400 if bank_id is missing when initial balance > 0.
+                500 if creation or side effects fail.
+        """
         logger.info(
             "[InvestmentService] Creating investment: %s",
             payload.model_dump(),
@@ -124,8 +179,30 @@ class InvestmentService:
 
         return dto
 
-    async def get(self, investment_id: int, db: AsyncSession) -> InvestmentDTO:
-        logger.debug(f"[InvestmentService] Get investment ID={investment_id}")
+    async def get(
+        self,
+        investment_id: int,
+        db: AsyncSession,
+    ) -> InvestmentDTO:
+        """
+        Get a single investment by ID.
+
+        Args:
+            investment_id: Investment identifier.
+            db: Active async database session.
+
+        Returns:
+            InvestmentDTO with the current investment data.
+
+        Raises:
+            HTTPException:
+                404 if not found.
+                500 on unexpected errors.
+        """
+        logger.debug(
+            "[InvestmentService] Get investment ID=%s",
+            investment_id,
+        )
         try:
             async with db.begin():
                 i = await self._require(investment_id, db)
@@ -138,10 +215,30 @@ class InvestmentService:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"[InvestmentService] Get failed ID={investment_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to fetch investment")
+            logger.error(
+                "[InvestmentService] Get failed ID=%s: %s",
+                investment_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to fetch investment",
+            )
 
-    async def list_all(self, db: AsyncSession) -> List[InvestmentDTO]:
+    async def list_all(
+        self,
+        db: AsyncSession,
+    ) -> List[InvestmentDTO]:
+        """
+        List all investments without pagination.
+
+        Args:
+            db: Active async database session.
+
+        Returns:
+            List of InvestmentDTO.
+        """
         logger.debug("[InvestmentService] List all investments")
         try:
             async with db.begin():
@@ -156,14 +253,37 @@ class InvestmentService:
                 for i in rows
             ]
         except Exception as e:
-            logger.error(f"[InvestmentService] List failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to list investments")
+            logger.error(
+                "[InvestmentService] List failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to list investments",
+            )
 
-    async def list_paginated(self, page: int, db: AsyncSession) -> InvestmentPageDTO:
+    async def list_paginated(
+        self,
+        page: int,
+        db: AsyncSession,
+    ) -> InvestmentPageDTO:
+        """
+        List investments in a paginated format.
+
+        Args:
+            page: 1-based page number.
+            db: Active async database session.
+
+        Returns:
+            InvestmentPageDTO with items and pagination metadata.
+        """
         offset = max(page - 1, 0) * self.PAGE_SIZE
         async with db.begin():
             items, total = await self.investment_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+                offset=offset,
+                limit=self.PAGE_SIZE,
+                session=db,
             )
 
         items_dto = [
@@ -195,6 +315,27 @@ class InvestmentService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> InvestmentDTO:
+        """
+        Set an investment balance to an explicit non-negative value.
+
+        Note:
+        This method does not adjust related bank balances or create transactions.
+
+        Args:
+            investment_id: Investment identifier.
+            new_balance: New balance value (must be >= 0).
+            db: Active async database session.
+            channel_id: Optional realtime channel for "investment:updated".
+
+        Returns:
+            Updated InvestmentDTO.
+
+        Raises:
+            HTTPException:
+                400 if new_balance < 0.
+                404 if investment not found.
+                500 if update fails.
+        """
         logger.info(
             "[InvestmentService] Update balance ID=%s -> %s",
             investment_id,
@@ -269,6 +410,33 @@ class InvestmentService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> InvestmentDTO:
+        """
+        Add balance to an investment as interest or as an external top-up.
+
+        Modes:
+        - kind="interest":
+            - Increase investment balance.
+            - Record "Interes Inversion" transaction on the investment bank.
+        - kind="topup":
+            - Require source_bank_id.
+            - Decrease source bank balance.
+            - Increase investment balance.
+            - Record "Retiro" transaction from the source bank.
+
+        Args:
+            payload: InvestmentAddBalanceIn with investment_id, amount, kind, etc.
+            db: Active async database session.
+            channel_id: Optional realtime channel for "investment:updated".
+
+        Returns:
+            Updated InvestmentDTO.
+
+        Raises:
+            HTTPException:
+                400 for invalid amount or missing source_bank_id.
+                404 if investment not found or has no bound bank.
+                500 on failure.
+        """
         investment_id = payload.investment_id
         amount = payload.amount
         kind: Literal["interest", "topup"] = payload.kind
@@ -403,6 +571,31 @@ class InvestmentService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> Optional[InvestmentDTO]:
+        """
+        Withdraw funds from an investment to a bank account.
+
+        Behavior:
+        - kind="full": withdraw full balance.
+        - kind="partial": withdraw given amount.
+        - Credit destination bank (payload.destination_bank_id or investment bank).
+        - Create auto "Retiro" transaction on destination bank.
+        - Delete investment if resulting balance becomes zero.
+
+        Args:
+            payload: InvestmentWithdrawIn parameters.
+            db: Active async database session.
+            channel_id: Optional realtime channel for "investment:updated/deleted".
+
+        Returns:
+            Updated InvestmentDTO if investment remains.
+            None if investment is removed after full withdrawal.
+
+        Raises:
+            HTTPException:
+                400 for invalid amount or missing destination.
+                404 if investment not found.
+                500 on failure.
+        """
         inv_id = payload.investment_id
 
         async def _run() -> tuple[Optional[InvestmentDTO], bool]:
@@ -546,6 +739,25 @@ class InvestmentService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> bool:
+        """
+        Delete an investment by ID.
+
+        Note:
+        This method does not adjust bank balances; ensure consistency externally.
+
+        Args:
+            investment_id: Investment identifier.
+            db: Active async database session.
+            channel_id: Optional realtime channel for "investment:deleted".
+
+        Returns:
+            True if deleted.
+
+        Raises:
+            HTTPException:
+                404 if investment not found.
+                500 on failure.
+        """
         logger.warning(
             "[InvestmentService] Delete investment ID=%s",
             investment_id,

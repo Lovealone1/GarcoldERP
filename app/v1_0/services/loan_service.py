@@ -1,32 +1,64 @@
+from math import ceil
 from typing import List, Optional
 from datetime import datetime
-from math import ceil
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
-from app.v1_0.repositories import LoanRepository, BankRepository, TransactionTypeRepository
-from .transaction_service import TransactionService
-from app.v1_0.schemas import LoanCreate, LoanApplyPaymentIn, TransactionCreate
-from app.v1_0.entities import LoanDTO, LoanPageDTO
 from app.core.realtime import publish_realtime_event
+from app.v1_0.entities import LoanDTO, LoanPageDTO
+from app.v1_0.repositories import (
+    LoanRepository,
+    BankRepository,
+    TransactionTypeRepository,
+)
+from app.v1_0.schemas import (
+    LoanCreate,
+    LoanApplyPaymentIn,
+    TransactionCreate,
+)
+from .transaction_service import TransactionService
+
 
 class LoanService:
-    def __init__(self, 
-        loan_repository: LoanRepository, 
+    def __init__(
+        self,
+        loan_repository: LoanRepository,
         bank_repository: BankRepository,
         transaction_service: TransactionService,
-        transaction_type_repository: TransactionTypeRepository) -> None:
+        transaction_type_repository: TransactionTypeRepository,
+    ) -> None:
         self.loan_repository = loan_repository
         self.bank_repository = bank_repository
         self.transaction_service = transaction_service
         self.transaction_type_repository = transaction_type_repository
         self.PAGE_SIZE = 10
 
-    async def _require(self, loan_id: int, db: AsyncSession):
+    async def _require(
+        self,
+        loan_id: int,
+        db: AsyncSession,
+    ):
+        """
+        Ensure that a loan exists; otherwise raise 404.
+
+        Args:
+            loan_id: Loan identifier to fetch.
+            db: Active async database session.
+
+        Returns:
+            ORM loan entity.
+
+        Raises:
+            HTTPException: With 404 status if the loan does not exist.
+        """
         loan = await self.loan_repository.get_by_id(loan_id, db)
         if not loan:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Loan not found.",
+            )
         return loan
 
     async def create(
@@ -35,6 +67,20 @@ class LoanService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> LoanDTO:
+        """
+        Create a new loan record.
+
+        Args:
+            payload: LoanCreate data with name, amount, and metadata.
+            db: Active async database session.
+            channel_id: Optional realtime channel to publish "loan:created".
+
+        Returns:
+            LoanDTO for the created loan.
+
+        Raises:
+            HTTPException: With 500 status if persistence fails.
+        """
         logger.info(
             "[LoanService] Creating loan: %s",
             payload.model_dump(),
@@ -87,51 +133,122 @@ class LoanService:
 
         return dto
 
-    async def get(self, loan_id: int, db: AsyncSession) -> LoanDTO:
-        logger.debug(f"[LoanService] Get loan ID={loan_id}")
+    async def get(
+        self,
+        loan_id: int,
+        db: AsyncSession,
+    ) -> LoanDTO:
+        """
+        Retrieve a single loan by ID.
+
+        Args:
+            loan_id: Loan identifier.
+            db: Active async database session.
+
+        Returns:
+            LoanDTO with the loan data.
+
+        Raises:
+            HTTPException:
+                404 if loan does not exist.
+                500 on unexpected errors.
+        """
+        logger.debug(
+            "[LoanService] Get loan ID=%s",
+            loan_id,
+        )
         try:
             async with db.begin():
                 l = await self._require(loan_id, db)
             return LoanDTO(
-                id=l.id, 
-                name=l.name, 
-                amount=l.amount, 
-                created_at=l.created_at
-                )
+                id=l.id,
+                name=l.name,
+                amount=l.amount,
+                created_at=l.created_at,
+            )
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"[LoanService] Get failed ID={loan_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to fetch loan")
+            logger.error(
+                "[LoanService] Get failed ID=%s: %s",
+                loan_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to fetch loan",
+            )
 
-    async def list_all(self, db: AsyncSession) -> List[LoanDTO]:
+    async def list_all(
+        self,
+        db: AsyncSession,
+    ) -> List[LoanDTO]:
+        """
+        List all loans without pagination.
+
+        Args:
+            db: Active async database session.
+
+        Returns:
+            List of LoanDTO.
+        """
         logger.debug("[LoanService] List all loans")
         try:
             async with db.begin():
                 rows = await self.loan_repository.list_all(db)
-            return [LoanDTO(
-                id=l.id, 
-                name=l.name, 
-                amount=l.amount, 
-                created_at=l.created_at) 
-                    for l in rows]
+            return [
+                LoanDTO(
+                    id=l.id,
+                    name=l.name,
+                    amount=l.amount,
+                    created_at=l.created_at,
+                )
+                for l in rows
+            ]
         except Exception as e:
-            logger.error(f"[LoanService] List failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to list loans")
+            logger.error(
+                "[LoanService] List failed: %s",
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to list loans",
+            )
 
-    async def list_paginated(self, page: int, db: AsyncSession) -> LoanPageDTO:
+    async def list_paginated(
+        self,
+        page: int,
+        db: AsyncSession,
+    ) -> LoanPageDTO:
+        """
+        List loans in a paginated format.
+
+        Args:
+            page: 1-based page number.
+            db: Active async database session.
+
+        Returns:
+            LoanPageDTO with items and pagination metadata.
+        """
         offset = max(page - 1, 0) * self.PAGE_SIZE
         async with db.begin():
             items, total = await self.loan_repository.list_paginated(
-                offset=offset, limit=self.PAGE_SIZE, session=db
+                offset=offset,
+                limit=self.PAGE_SIZE,
+                session=db,
             )
 
-        items_dto = [LoanDTO(
-            id=l.id, 
-            name=l.name, 
-            amount=l.amount, 
-            created_at=l.created_at) 
-                for l in items]
+        items_dto = [
+            LoanDTO(
+                id=l.id,
+                name=l.name,
+                amount=l.amount,
+                created_at=l.created_at,
+            )
+            for l in items
+        ]
         total = int(total or 0)
         total_pages = max(1, ceil(total / self.PAGE_SIZE)) if total else 1
 
@@ -152,6 +269,27 @@ class LoanService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> LoanDTO:
+        """
+        Set a loan amount to a specific non-negative value.
+
+        Note:
+        This method does not handle any external side effects beyond the loan itself.
+
+        Args:
+            loan_id: Loan identifier.
+            new_amount: New amount value (must be >= 0).
+            db: Active async database session.
+            channel_id: Optional realtime channel for "loan:updated".
+
+        Returns:
+            Updated LoanDTO.
+
+        Raises:
+            HTTPException:
+                400 if new_amount < 0.
+                404 if loan not found.
+                500 if update fails.
+        """
         logger.info(
             "[LoanService] Update amount ID=%s -> %s",
             loan_id,
@@ -226,6 +364,25 @@ class LoanService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> bool:
+        """
+        Delete a loan by ID.
+
+        Note:
+        This method does not revert any prior financial flows linked to the loan.
+
+        Args:
+            loan_id: Loan identifier.
+            db: Active async database session.
+            channel_id: Optional realtime channel for "loan:deleted".
+
+        Returns:
+            True if the loan was deleted.
+
+        Raises:
+            HTTPException:
+                404 if the loan does not exist.
+                500 on failure.
+        """
         logger.warning(
             "[LoanService] Delete loan ID=%s",
             loan_id,
@@ -287,6 +444,31 @@ class LoanService:
         db: AsyncSession,
         channel_id: Optional[str] = None,
     ) -> Optional[LoanDTO]:
+        """
+        Apply a payment to a loan and record the corresponding bank transaction.
+
+        Flow:
+        - Validate amount > 0.
+        - Decrease the specified bank balance by amount.
+        - Apply payment to the loan via repository (which may fully settle and delete).
+        - Create an automatic "Retiro" transaction describing the payment.
+        - Emit realtime events for updated or deleted loan.
+
+        Args:
+            payload: LoanApplyPaymentIn with loan_id, bank_id, amount, and optional description.
+            db: Active async database session.
+            channel_id: Optional realtime channel for "loan:updated" or "loan:deleted".
+
+        Returns:
+            Updated LoanDTO if the loan remains active.
+            None if the loan is fully paid and removed.
+
+        Raises:
+            HTTPException:
+                400 for invalid amounts or business rule violations.
+                404 if loan cannot be resolved.
+                500 if processing fails.
+        """
         logger.info(
             "[LoanService] Apply payment loan_id=%s amount=%s bank_id=%s",
             payload.loan_id,
@@ -354,7 +536,6 @@ class LoanService:
             await db.commit()
         except HTTPException as e:
             await db.rollback()
-            # mappeo de ValueError ya lo hacías arriba, aquí no lo necesitas
             raise e
         except ValueError as e:
             await db.rollback()
