@@ -13,7 +13,7 @@ from app.core.realtime import publish_realtime_event
 class SupplierService:
     def __init__(self, supplier_repository: SupplierRepository) -> None:
         self.supplier_repository = supplier_repository
-        self.PAGE_SIZE = 10
+        self.PAGE_SIZE = 8
 
     async def _require(
         self,
