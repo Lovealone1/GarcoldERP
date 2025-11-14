@@ -18,7 +18,7 @@ class CustomerService:
         self.customer_repository = customer_repository
         self.bank_repository = bank_repository
         self.transaction_service = transaction_service
-        self.PAGE_SIZE = 10
+        self.PAGE_SIZE = 8
 
     async def _require(self, customer_id: int, db: AsyncSession):
         """
@@ -641,7 +641,6 @@ class CustomerService:
 
         if channel_id:
             try:
-                # Evento específico opcional + actualización de cliente
                 await publish_realtime_event(
                     channel_id=channel_id,
                     resource="customer_payment",
