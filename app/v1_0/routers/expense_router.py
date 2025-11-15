@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+from app.core.security.deps import AuthContext, get_auth_context
+from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
@@ -23,18 +25,29 @@ router = APIRouter(prefix="/expenses", tags=["Expenses"])
 async def create_expense(
     request: ExpenseCreate,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
     ),
 ) -> ExpenseDTO:
-    logger.info(f"[ExpenseRouter] create payload={request.model_dump()}")
+    logger.info("[ExpenseRouter] create payload=%s", request.model_dump())
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create(request, db)
+        return await service.create(
+            payload=request,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ExpenseRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create expense")
+        logger.error("[ExpenseRouter] create error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create expense",
+        )
+
 
 @router.delete(
     "/by-id/{expense_id}",
@@ -45,23 +58,38 @@ async def create_expense(
 async def delete_expense(
     expense_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
     ),
-):
-    logger.warning(f"[ExpenseRouter] delete id={expense_id}")
+) -> Dict[str, str]:
+    logger.warning("[ExpenseRouter] delete id=%s", expense_id)
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete(expense_id, db)
+        ok = await service.delete(
+            expense_id=expense_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ExpenseRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete expense")
+        logger.error("[ExpenseRouter] delete error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete expense",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Expense not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Expense not found",
+        )
 
-    return {"message": f"Expense with ID {expense_id} deleted successfully"}
+    return {
+        "message": f"Expense with ID {expense_id} deleted successfully"
+    }
 
 @router.get(
     "/page",

@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+from app.core.security.deps import AuthContext, get_auth_context
+from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
@@ -13,7 +15,6 @@ from app.v1_0.entities import ProductDTO, ProductPageDTO, SaleProductsDTO
 from app.v1_0.services import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products"])
-
 
 @router.post(
     "/create",
@@ -25,19 +26,35 @@ router = APIRouter(prefix="/products", tags=["Products"])
 async def create_product(
     request: ProductUpsert,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
     ),
-):
-    logger.info(f"[ProductRouter] create payload={request.model_dump()}")
+) -> ProductDTO:
+    logger.info(
+        "[ProductRouter] create payload=%s",
+        request.model_dump(),
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create(request, db)
+        return await service.create(
+            payload=request,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ProductRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create product")
-
+        logger.error(
+            "[ProductRouter] create error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create product",
+        )
 
 @router.get(
     "/by-id/{product_id}",
@@ -61,7 +78,6 @@ async def get_product(
         logger.error(f"[ProductRouter] get error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch product")
 
-
 @router.get(
     "",
     response_model=List[ProductDTO],
@@ -82,7 +98,6 @@ async def list_products(
     except Exception as e:
         logger.error(f"[ProductRouter] list_all error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list products")
-
 
 @router.get(
     "/page",
@@ -106,7 +121,6 @@ async def list_products_paginated(
         logger.error(f"[ProductRouter] list_paginated error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list products")
 
-
 @router.patch(
     "/by-id/{product_id}",
     response_model=ProductDTO,
@@ -117,19 +131,36 @@ async def update_product(
     product_id: int,
     data: ProductUpsert,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
     ),
-):
-    logger.info(f"[ProductRouter] update id={product_id}")
+) -> ProductDTO:
+    logger.info(
+        "[ProductRouter] update id=%s",
+        product_id,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.update(product_id, data, db)
+        return await service.update(
+            product_id=product_id,
+            payload=data,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ProductRouter] update error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update product")
-
+        logger.error(
+            "[ProductRouter] update error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update product",
+        )
 
 @router.delete(
     "/by-id/{product_id}",
@@ -140,23 +171,46 @@ async def update_product(
 async def delete_product(
     product_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
     ),
-):
-    logger.warning(f"[ProductRouter] delete id={product_id}")
+) -> Dict[str, str]:
+    logger.warning(
+        "[ProductRouter] delete id=%s",
+        product_id,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete(product_id, db)
+        ok = await service.delete(
+            product_id=product_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ProductRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete product")
+        logger.error(
+            "[ProductRouter] delete error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete product",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return {"message": f"Product with ID {product_id} deleted successfully"}
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found",
+        )
 
+    return {
+        "message": f"Product with ID {product_id} deleted successfully"
+    }
+    
 @router.patch(
     "/by-id/{product_id}/toggle-active",
     response_model=ProductDTO,
@@ -166,19 +220,35 @@ async def delete_product(
 async def toggle_product_active(
     product_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
     ),
-):
-    logger.info(f"[ProductRouter] toggle_active id={product_id}")
+) -> ProductDTO:
+    logger.info(
+        "[ProductRouter] toggle_active id=%s",
+        product_id,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.toggle_active(product_id, db)
+        return await service.toggle_active(
+            product_id=product_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ProductRouter] toggle_active error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to toggle product state")
-
+        logger.error(
+            "[ProductRouter] toggle_active error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to toggle product state",
+        )
 
 @router.patch(
     "/by-id/{product_id}/increase",
@@ -203,7 +273,6 @@ async def increase_quantity(
         logger.error(f"[ProductRouter] increase error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to increase quantity")
 
-
 @router.patch(
     "/by-id/{product_id}/decrease",
     response_model=ProductDTO,
@@ -226,7 +295,6 @@ async def decrease_quantity(
     except Exception as e:
         logger.error(f"[ProductRouter] decrease error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to decrease quantity")
-
 
 @router.get(
     "/top",
@@ -253,7 +321,6 @@ async def top_products(
     except Exception as e:
         logger.error(f"[ProductRouter] top error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to compute top products")
-
 
 @router.post(
     "/sold-in-range",

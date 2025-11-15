@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
 
+from app.core.security.deps import AuthContext, get_auth_context
+from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 from app.core.logger import logger
@@ -12,7 +14,6 @@ from app.v1_0.entities import PurchasePaymentDTO, PurchasePaymentViewDTO
 from app.v1_0.services import PurchasePaymentService
 
 router = APIRouter(prefix="/purchase-payments", tags=["PurchasePayments"])
-
 
 @router.post(
     "/create",
@@ -24,18 +25,35 @@ router = APIRouter(prefix="/purchase-payments", tags=["PurchasePayments"])
 async def create_purchase_payment(
     payload: PurchasePaymentCreate,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: PurchasePaymentService = Depends(
         Provide[ApplicationContainer.api_container.purchase_payment_service]
     ),
 ) -> PurchasePaymentDTO:
-    logger.info(f"[PurchasePaymentRouter] create payload={payload.model_dump()}")
+    logger.info(
+        "[PurchasePaymentRouter] create payload=%s",
+        payload.model_dump(),
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        return await service.create_purchase_payment(payload, db)
+        return await service.create_purchase_payment(
+            payload=payload,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[PurchasePaymentRouter] create error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create purchase payment")
+        logger.error(
+            "[PurchasePaymentRouter] create error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create purchase payment",
+        )
 
 
 @router.delete(
@@ -47,22 +65,45 @@ async def create_purchase_payment(
 async def delete_purchase_payment(
     payment_id: int,
     db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
     service: PurchasePaymentService = Depends(
         Provide[ApplicationContainer.api_container.purchase_payment_service]
     ),
 ) -> Dict[str, str]:
-    logger.warning(f"[PurchasePaymentRouter] delete id={payment_id}")
+    logger.warning(
+        "[PurchasePaymentRouter] delete id=%s",
+        payment_id,
+    )
+    channel_id = build_channel_id_from_auth(auth_ctx)
+
     try:
-        ok = await service.delete_purchase_payment(payment_id, db)
+        ok = await service.delete_purchase_payment(
+            payment_id=payment_id,
+            db=db,
+            channel_id=channel_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[PurchasePaymentRouter] delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete purchase payment")
+        logger.error(
+            "[PurchasePaymentRouter] delete error: %s",
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete purchase payment",
+        )
 
     if not ok:
-        raise HTTPException(status_code=404, detail="Purchase payment not found")
-    return {"message": f"Purchase payment with ID {payment_id} deleted successfully"}
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase payment not found",
+        )
+
+    return {
+        "message": f"Purchase payment with ID {payment_id} deleted successfully"
+    }
 
 
 @router.get(
