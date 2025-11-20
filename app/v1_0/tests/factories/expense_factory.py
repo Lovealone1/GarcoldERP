@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import random
 
 from app.v1_0.models import Expense
-from tests.factories import seed_banks, seed_expense_categories
+from .bank_factory import seed_banks
+from .expense_category_factory import seed_expense_categories
 
 
 AMOUNTS = [15000.00, 85000.50, 120000.00, 45000.75, 99900.25]

@@ -3,7 +3,7 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Investment
-from tests.factories import seed_banks
+from .bank_factory import seed_banks
 
 
 MOCK_INVESTMENTS = [

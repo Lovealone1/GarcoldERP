@@ -1,34 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+# ROOT = carpeta raíz del proyecto (padre de scripts/)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
-to_path() {
-  local module="$1"
-  echo "${module//./\/}.py"
-}
-
-if [ $# -eq 0 ]; then
-  poetry run pytest
-
-elif [ $# -eq 1 ]; then
-  target="$1"
+to_nodeid() {
+  local target="$1"
 
   if [[ "$target" == *"::"* || "$target" == *.py || "$target" == *"/"* ]]; then
-    nodeid="$target"
+    echo "$target"
   else
-    nodeid="$(to_path "$target")"
+    echo "${target//./\/}.py"
   fi
+}
 
-  poetry run pytest "$nodeid"
+case $# in
+  0)
+    echo ">> Ejecutando TODOS los tests"
+    poetry run pytest
+    ;;
 
-else
-  module="$1"
-  testname="$2"
+  1)
+    nodeid="$(to_nodeid "$1")"
+    echo ">> Ejecutando tests en: $nodeid"
+    poetry run pytest "$nodeid"
+    ;;
 
-  module_path="$(to_path "$module")"
-  nodeid="${module_path}::${testname}"
+  2)
+    module_nodeid="$(to_nodeid "$1")"
+    nodeid="${module_nodeid}::$2"
+    echo ">> Ejecutando test específico: $nodeid"
+    poetry run pytest "$nodeid"
+    ;;
 
-  poetry run pytest "$nodeid"
-fi
+  *)
+    echo "Uso: $0 [modulo] [nombre_test]" >&2
+    exit 1
+    ;;
+esac
