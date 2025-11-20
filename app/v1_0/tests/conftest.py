@@ -26,6 +26,14 @@ from app.v1_0.tests.factories import (
     seed_company,
 )
 
+class FakeAuthContext:
+    def __init__(self, user_id="test-user"):
+        self.user_id = user_id
+
+@pytest.fixture
+def fake_auth_ctx():
+    return FakeAuthContext()
+
 @dataclass
 class FakeAsyncSession(AsyncSession):
     began: bool = False

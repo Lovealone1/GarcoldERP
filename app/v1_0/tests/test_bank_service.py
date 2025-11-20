@@ -5,8 +5,16 @@ from fastapi import HTTPException
 from app.v1_0.schemas import BankCreate
 from app.v1_0.models import Bank
 from app.v1_0.services.bank_service import BankService
+from app.v1_0.entities import BankDTO
 from app.v1_0.tests.conftest import FakeAsyncSession
+from unittest.mock import AsyncMock
 
+from app.v1_0.routers.bank_router import (
+    create_bank,
+    list_banks,
+    update_bank_balance,
+    delete_bank,
+)
 
 @pytest.mark.asyncio
 async def test_create_bank(
@@ -563,3 +571,354 @@ async def test_increase_balance_error_raises_500(
     assert exc.value.status_code == 500
     assert "Failed to increase balance" in exc.value.detail
     assert db_session.rolled_back is True
+
+
+@pytest.mark.asyncio
+async def test_router_create_bank_returns_dto(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    payload = BankCreate(
+        name="Banco Router",
+        account_number="R-001",
+        balance=0.0,
+    )
+
+    now = datetime.now()
+    dto = BankDTO(
+        id=1,
+        name="Banco Router",
+        account_number="R-001",
+        balance=0.0,
+        created_at=now,
+        updated_at=now,
+    )
+
+    mock_service = mocker.Mock()
+    mock_service.create_bank = AsyncMock(return_value=dto)
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="test-channel",
+    )
+
+    result = await create_bank(
+        request=payload,
+        db=db_session,
+        auth_ctx=fake_auth_ctx,
+        bank_service=mock_service,
+    )
+
+    mock_service.create_bank.assert_awaited_once_with(
+        payload,
+        db_session,
+        channel_id="test-channel",
+    )
+
+    assert isinstance(result, BankDTO)
+    assert result.id == 1
+    assert result.name == "Banco Router"
+    assert result.account_number == "R-001"
+
+
+@pytest.mark.asyncio
+async def test_router_create_bank_value_error_returns_400(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    payload = BankCreate(
+        name="Invalid",
+        account_number="BAD",
+        balance=0.0,
+    )
+
+    mock_service = mocker.Mock()
+    mock_service.create_bank = AsyncMock(side_effect=ValueError("bad data"))
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="test-channel",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_bank(
+            request=payload,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 400
+    assert "bad data" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_create_bank_generic_error_returns_500(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    payload = BankCreate(
+        name="Banco",
+        account_number="X",
+        balance=0.0,
+    )
+
+    mock_service = mocker.Mock()
+    mock_service.create_bank = AsyncMock(side_effect=RuntimeError("boom"))
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="test-channel",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_bank(
+            request=payload,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Failed to create bank" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_list_banks_returns_list_of_dtos(
+    db_session: FakeAsyncSession,
+    mocker,
+):
+    now = datetime.now()
+    service_banks = [
+        BankDTO(
+            id=1,
+            name="A",
+            account_number="A-1",
+            balance=10.0,
+            created_at=now,
+            updated_at=now,
+        ),
+        BankDTO(
+            id=2,
+            name="B",
+            account_number="B-2",
+            balance=20.0,
+            created_at=now,
+            updated_at=now,
+        ),
+    ]
+
+    mock_service = mocker.Mock()
+    mock_service.get_all_banks = AsyncMock(return_value=service_banks)
+
+    result = await list_banks(
+        db=db_session,
+        bank_service=mock_service,
+    )
+
+    mock_service.get_all_banks.assert_awaited_once_with(db_session)
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert {b.name for b in result} == {"A", "B"}
+
+
+@pytest.mark.asyncio
+async def test_router_list_banks_error_returns_500(
+    db_session: FakeAsyncSession,
+    mocker,
+):
+    mock_service = mocker.Mock()
+    mock_service.get_all_banks = AsyncMock(side_effect=RuntimeError("db down"))
+
+    with pytest.raises(HTTPException) as exc:
+        await list_banks(
+            db=db_session,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Failed to list banks" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_update_bank_balance_returns_dto(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    now = datetime.now()
+    dto = BankDTO(
+        id=1,
+        name="Bank",
+        account_number="ACC",
+        balance=300.0,
+        created_at=now,
+        updated_at=now,
+    )
+
+    mock_service = mocker.Mock()
+    mock_service.update_balance = AsyncMock(return_value=dto)
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-1",
+    )
+
+    result = await update_bank_balance(
+        bank_id=1,
+        new_balance=300.0,
+        db=db_session,
+        auth_ctx=fake_auth_ctx,
+        bank_service=mock_service,
+    )
+
+    mock_service.update_balance.assert_awaited_once_with(
+        1,
+        300.0,
+        db_session,
+        channel_id="chan-1",
+    )
+
+    assert isinstance(result, BankDTO)
+    assert result.balance == 300.0
+
+
+@pytest.mark.asyncio
+async def test_router_update_bank_balance_error_returns_500(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    mock_service = mocker.Mock()
+    mock_service.update_balance = AsyncMock(side_effect=RuntimeError("boom"))
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-1",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await update_bank_balance(
+            bank_id=1,
+            new_balance=100.0,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Failed to update balance" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_delete_bank_success_returns_message(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    mock_service = mocker.Mock()
+    mock_service.delete_bank = AsyncMock(return_value=True)
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-del",
+    )
+
+    result = await delete_bank(
+        bank_id=5,
+        db=db_session,
+        auth_ctx=fake_auth_ctx,
+        bank_service=mock_service,
+    )
+
+    mock_service.delete_bank.assert_awaited_once_with(
+        5,
+        db_session,
+        channel_id="chan-del",
+    )
+
+    assert result == {"message": "Bank with ID 5 deleted successfully"}
+
+
+@pytest.mark.asyncio
+async def test_router_delete_bank_not_found_returns_404(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    mock_service = mocker.Mock()
+    mock_service.delete_bank = AsyncMock(return_value=False)
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-del",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_bank(
+            bank_id=99,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 404
+    assert "Bank not found" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_delete_bank_value_error_returns_400(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    mock_service = mocker.Mock()
+    mock_service.delete_bank = AsyncMock(
+        side_effect=ValueError("blocked delete")
+    )
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-del",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_bank(
+            bank_id=1,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 400
+    assert "blocked delete" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_router_delete_bank_error_returns_500(
+    db_session: FakeAsyncSession,
+    mocker,
+    fake_auth_ctx,
+):
+    mock_service = mocker.Mock()
+    mock_service.delete_bank = AsyncMock(side_effect=RuntimeError("boom"))
+
+    mocker.patch(
+        "app.v1_0.routers.bank_router.build_channel_id_from_auth",
+        return_value="chan-del",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_bank(
+            bank_id=1,
+            db=db_session,
+            auth_ctx=fake_auth_ctx,
+            bank_service=mock_service,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Failed to delete bank" in exc.value.detail
