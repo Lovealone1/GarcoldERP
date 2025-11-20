@@ -16,6 +16,22 @@ from app.v1_0.models import Base
 from app.main import app
 from app.storage.database import get_db
 
+from tests.factories import (
+    seed_banks, 
+    seed_customers, 
+    seed_expense_categories, 
+    seed_expenses, 
+    seed_investments, 
+    seed_loans, 
+    seed_products, 
+    seed_suppliers,
+    seed_transaction_types,
+    seed_roles, 
+    seed_users, 
+    seed_statuses,
+    seed_permissions,
+    seed_company
+    )
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -33,6 +49,115 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
 )
 
+@pytest.fixture
+async def seed_banks_fixture(db_session):
+    async def run():
+        return await seed_banks(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_customers_fixture(db_session):
+    async def run():
+        return await seed_customers(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_expense_categories_fixture(db_session):
+
+    async def run():
+        return await seed_expense_categories(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_expenses_fixture(db_session):
+
+    async def run():
+        return await seed_expenses(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_investments_fixture(db_session):
+
+    async def run():
+        return await seed_investments(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_loans_fixture(db_session):
+
+    async def run():
+        return await seed_loans(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_products_fixture(db_session):
+
+    async def run():
+        return await seed_products(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_suppliers_fixture(db_session):
+
+    async def run():
+        return await seed_suppliers(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_transaction_types_fixture(db_session):
+
+    async def run():
+        return await seed_transaction_types(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_roles_fixture(db_session):
+
+    async def run():
+        return await seed_roles(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_users_fixture(db_session):
+
+    async def run():
+        return await seed_users(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_statuses_fixture(db_session):
+
+    async def run():
+        return await seed_statuses(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_permissions_fixture(db_session):
+
+    async def run():
+        return await seed_permissions(db_session)
+
+    return run
+
+@pytest.fixture
+async def seed_company_fixture(db_session):
+
+    async def run():
+        return await seed_company(db_session)
+
+    return run
 
 @pytest.fixture(scope="session")
 def event_loop():
