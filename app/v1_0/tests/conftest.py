@@ -6,13 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.repositories import (
     BankRepository, 
     CustomerRepository, 
-    SupplierRepository
+    SupplierRepository, 
+    UserRepository, 
+    RoleRepository
 )
 from app.v1_0.services import (
     BankService, 
     TransactionService, 
     CustomerService, 
-    SupplierService
+    SupplierService, 
+    SupabaseAdminService, 
+    UserService
 )
 from app.v1_0.tests.factories import (
     seed_banks,
@@ -30,6 +34,8 @@ from app.v1_0.tests.factories import (
     seed_permissions,
     seed_company,
 )
+
+
 
 class FakeAuthContext:
     def __init__(self, user_id="test-user"):
@@ -114,6 +120,23 @@ def customer_repository() -> AsyncMock:
     return AsyncMock(spec=CustomerRepository)
 
 @pytest.fixture
+def user_repository() -> AsyncMock:
+    return AsyncMock(spec=UserRepository)
+
+
+@pytest.fixture
+def role_repository() -> AsyncMock:
+    return AsyncMock(spec=RoleRepository)
+
+@pytest.fixture
+def supplier_repository() -> AsyncMock:
+    return AsyncMock(spec=SupplierRepository)
+
+@pytest.fixture
+def supabase_admin() -> AsyncMock:
+    return AsyncMock(spec=SupabaseAdminService)
+
+@pytest.fixture
 def transaction_service() -> AsyncMock:
     return AsyncMock(spec=TransactionService)
 
@@ -130,8 +153,16 @@ def customer_service(
     )
 
 @pytest.fixture
-def supplier_repository() -> AsyncMock:
-    return AsyncMock(spec=SupplierRepository)
+def user_service(
+    user_repository: AsyncMock,
+    role_repository: AsyncMock,
+    supabase_admin: AsyncMock,
+) -> UserService:
+    return UserService(
+        user_repository=user_repository,
+        role_repository=role_repository,
+        supabase_admin=supabase_admin,
+    )
 
 @pytest.fixture
 def supplier_service(
