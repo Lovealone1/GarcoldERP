@@ -1,14 +1,19 @@
 import asyncio
-from typing import AsyncGenerator, Callable, List
 from dataclasses import dataclass
-from datetime import datetime
 import pytest
-
 from unittest.mock import AsyncMock
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.v1_0.repositories import BankRepository, CustomerRepository
-from app.v1_0.services import BankService, TransactionService, CustomerService
-
+from app.v1_0.repositories import (
+    BankRepository, 
+    CustomerRepository, 
+    SupplierRepository
+)
+from app.v1_0.services import (
+    BankService, 
+    TransactionService, 
+    CustomerService, 
+    SupplierService
+)
 from app.v1_0.tests.factories import (
     seed_banks,
     seed_customers,
@@ -34,10 +39,6 @@ class FakeAuthContext:
 def fake_auth_ctx():
     return FakeAuthContext()
 
-from dataclasses import dataclass
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
 @dataclass
 class FakeAsyncSession(AsyncSession):
     began: bool = False
@@ -52,14 +53,6 @@ class FakeAsyncSession(AsyncSession):
         self._in_tx = False
 
     class _BeginContext:
-        """
-        Objeto que funciona tanto como awaitable como context manager async.
-
-        Soporta:
-            await db.begin()
-            async with db.begin():
-        """
-
         def __init__(self, outer: "FakeAsyncSession"):
             self.outer = outer
 
@@ -96,8 +89,6 @@ class FakeAsyncSession(AsyncSession):
     def in_transaction(self) -> bool:
         return self._in_tx
 
-
-
 @pytest.fixture
 def db_session() -> FakeAsyncSession:
     return FakeAsyncSession()
@@ -120,15 +111,11 @@ def bank_service(bank_repository: BankRepository) -> BankService:
 
 @pytest.fixture
 def customer_repository() -> AsyncMock:
-    """Repo de clientes mockeado."""
     return AsyncMock(spec=CustomerRepository)
-
 
 @pytest.fixture
 def transaction_service() -> AsyncMock:
-    """Servicio de transacciones mockeado."""
     return AsyncMock(spec=TransactionService)
-
 
 @pytest.fixture
 def customer_service(
@@ -136,11 +123,22 @@ def customer_service(
     bank_repository: AsyncMock,
     transaction_service: AsyncMock,
 ) -> CustomerService:
-    """Servicio real de clientes usando repos y servicios mockeados."""
     return CustomerService(
         customer_repository=customer_repository,
         bank_repository=bank_repository,
         transaction_service=transaction_service,
+    )
+
+@pytest.fixture
+def supplier_repository() -> AsyncMock:
+    return AsyncMock(spec=SupplierRepository)
+
+@pytest.fixture
+def supplier_service(
+    supplier_repository: AsyncMock,
+) -> SupplierService:
+    return SupplierService(
+        supplier_repository=supplier_repository,
     )
 
 def _wrap_factory(factory_fn):

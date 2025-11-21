@@ -1,5 +1,5 @@
 import pytest
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from datetime import datetime
 
 from unittest.mock import AsyncMock
