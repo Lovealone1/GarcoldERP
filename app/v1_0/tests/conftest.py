@@ -6,8 +6,8 @@ import pytest
 
 from unittest.mock import AsyncMock
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.v1_0.repositories import BankRepository
-from app.v1_0.services import BankService
+from app.v1_0.repositories import BankRepository, CustomerRepository
+from app.v1_0.services import BankService, TransactionService, CustomerService
 
 from app.v1_0.tests.factories import (
     seed_banks,
@@ -34,28 +34,68 @@ class FakeAuthContext:
 def fake_auth_ctx():
     return FakeAuthContext()
 
+from dataclasses import dataclass
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
 @dataclass
 class FakeAsyncSession(AsyncSession):
     began: bool = False
     committed: bool = False
     rolled_back: bool = False
+    _in_tx: bool = False
 
     def __init__(self) -> None:
         self.began = False
         self.committed = False
         self.rolled_back = False
+        self._in_tx = False
 
-    async def begin(self):
-        self.began = True
+    class _BeginContext:
+        """
+        Objeto que funciona tanto como awaitable como context manager async.
+
+        Soporta:
+            await db.begin()
+            async with db.begin():
+        """
+
+        def __init__(self, outer: "FakeAsyncSession"):
+            self.outer = outer
+
+        def __await__(self):
+            async def _inner():
+                self.outer.began = True
+                self.outer._in_tx = True
+
+            return _inner().__await__()
+
+        async def __aenter__(self):
+            self.outer.began = True
+            self.outer._in_tx = True
+            return self.outer
+
+        async def __aexit__(self, exc_type, exc, tb):
+            if exc_type is not None:
+                self.outer.rolled_back = True
+            else:
+                self.outer.committed = True
+            self.outer._in_tx = False
+
+    def begin(self):
+        return FakeAsyncSession._BeginContext(self)
 
     async def commit(self):
         self.committed = True
+        self._in_tx = False
 
     async def rollback(self):
         self.rolled_back = True
+        self._in_tx = False
 
     def in_transaction(self) -> bool:
-        return self.began and not (self.committed or self.rolled_back)
+        return self._in_tx
+
 
 
 @pytest.fixture
@@ -78,12 +118,35 @@ def bank_repository(mocker) -> BankRepository:
 def bank_service(bank_repository: BankRepository) -> BankService:
     return BankService(bank_repository=bank_repository)
 
+@pytest.fixture
+def customer_repository() -> AsyncMock:
+    """Repo de clientes mockeado."""
+    return AsyncMock(spec=CustomerRepository)
+
+
+@pytest.fixture
+def transaction_service() -> AsyncMock:
+    """Servicio de transacciones mockeado."""
+    return AsyncMock(spec=TransactionService)
+
+
+@pytest.fixture
+def customer_service(
+    customer_repository: AsyncMock,
+    bank_repository: AsyncMock,
+    transaction_service: AsyncMock,
+) -> CustomerService:
+    """Servicio real de clientes usando repos y servicios mockeados."""
+    return CustomerService(
+        customer_repository=customer_repository,
+        bank_repository=bank_repository,
+        transaction_service=transaction_service,
+    )
 
 def _wrap_factory(factory_fn):
     async def run_fake():
-        return await factory_fn(None)  # ignora db
+        return await factory_fn(None)  
     return run_fake
-
 
 @pytest.fixture
 def seed_banks_fixture():
