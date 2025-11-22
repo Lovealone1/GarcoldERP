@@ -8,7 +8,8 @@ from app.v1_0.repositories import (
     CustomerRepository, 
     SupplierRepository, 
     UserRepository, 
-    RoleRepository
+    RoleRepository, 
+    StatusRepository
 )
 from app.v1_0.services import (
     BankService, 
@@ -16,7 +17,8 @@ from app.v1_0.services import (
     CustomerService, 
     SupplierService, 
     SupabaseAdminService, 
-    UserService
+    UserService, 
+    StatusService
 )
 from app.v1_0.tests.factories import (
     seed_banks,
@@ -135,6 +137,17 @@ def supplier_repository() -> AsyncMock:
 @pytest.fixture
 def supabase_admin() -> AsyncMock:
     return AsyncMock(spec=SupabaseAdminService)
+
+@pytest.fixture
+def status_repository() -> AsyncMock:
+    repo = AsyncMock(spec=StatusRepository)
+    repo.list_statuses = AsyncMock()
+    return repo
+
+
+@pytest.fixture
+def status_service(status_repository: AsyncMock) -> StatusService:
+    return StatusService(status_repository=status_repository)
 
 @pytest.fixture
 def transaction_service() -> AsyncMock:
