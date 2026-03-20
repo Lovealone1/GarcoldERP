@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
+from app.utils.date_utils import now_colombian_time
 from app.v1_0.entities import SalePaymentDTO, SalePaymentViewDTO 
 from app.v1_0.schemas import SalePaymentCreate, TransactionCreate
 from app.v1_0.repositories import (
@@ -144,6 +145,7 @@ class SalePaymentService:
                     amount=amount,
                     type_id=tx_type_id,
                     description=f"{payment.id} Abono venta {payload.sale_id}",
+                    created_at=getattr(payment, "created_at", now_colombian_time()),
                 ),
                 db=db,
             )
@@ -153,7 +155,7 @@ class SalePaymentService:
                 sale_id=payment.sale_id,
                 bank_id=payment.bank_id,
                 amount=payment.amount,
-                created_at=getattr(payment, "created_at", datetime.now()),
+                created_at=getattr(payment, "created_at", now_colombian_time()),
             )
             return dto, sale.id
 

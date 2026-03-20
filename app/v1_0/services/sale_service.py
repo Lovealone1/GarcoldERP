@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
+from app.utils.date_utils import now_colombian_time
 from app.core.realtime import ConnectionManager
 from app.v1_0.entities import (
     SaleDTO,
@@ -212,7 +213,7 @@ class SaleService:
             await self.product_repository.decrease_quantity(it.product_id, it.quantity, session=db)
 
     async def _adjust_balances_and_transaction(
-        self, *, is_credit: bool, customer_id: int, bank_id: int, amount: float, sale_id: int, db: AsyncSession
+        self, *, is_credit: bool, customer_id: int, bank_id: int, amount: float, sale_id: int, created_at: datetime, db: AsyncSession
     ) -> None:
         """
         Adjust customer or bank balances and create a transaction when applicable.
@@ -250,6 +251,7 @@ class SaleService:
                     amount=amount,
                     type_id=tx_type_id,
                     description=f"Pago venta {sale_id}",
+                    created_at=created_at,
                 ),
                 db=db,
             )
@@ -349,7 +351,7 @@ class SaleService:
                     total=0.0,
                     status_id=status_id,
                     remaining_balance=0.0,
-                    created_at=sale_date or datetime.now(),
+                    created_at=sale_date or now_colombian_time(),
                 ),
                 session=db,
             )
@@ -372,6 +374,7 @@ class SaleService:
                 bank_id=bank_id,
                 amount=total_amount,
                 sale_id=sale.id,
+                created_at=sale.created_at,
                 db=db,
             )
 

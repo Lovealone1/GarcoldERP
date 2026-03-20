@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
-
+from app.utils.date_utils import now_colombian_time
 class SaleItemInput(BaseModel):
     product_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -25,4 +25,4 @@ class SaleInsert(BaseModel):
     total: float = Field(..., ge=0.0)
     status_id: int = Field(..., ge=1)
     remaining_balance: Optional[float] = Field(None, ge=0.0)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=now_colombian_time)
