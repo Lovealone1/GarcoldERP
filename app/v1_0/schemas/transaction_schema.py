@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
+from app.utils.date_utils import now_colombian_time
 
 class TransactionCreate(BaseModel):
     """Input schema for creating a bank transaction."""
@@ -9,7 +10,7 @@ class TransactionCreate(BaseModel):
     type_id: Optional[int] = Field(None, ge=1)
     description: Optional[str] = None
     is_auto: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=now_colombian_time)
 
     model_config = {
         "json_schema_extra": {
