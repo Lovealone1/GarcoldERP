@@ -5,19 +5,22 @@ POETRY_VIRTUALENVS_IN_PROJECT = "true"
 POETRY_NO_INTERACTION = "1"
 WEB_CONCURRENCY = "2"
 PLAYWRIGHT_BROWSERS_PATH = "/ms-playwright"
+NIXPACKS_PKG_LIBRARIES = "expat zlib glib nss dbus atk cairo pango alsa-lib gtk3 fontconfig freetype gdk-pixbuf libxkbcommon"
+LD_LIBRARY_PATH = "/nix/var/nix/profiles/default/lib:/usr/local/lib:/usr/lib:${LD_LIBRARY_PATH}"
 
 [phases.setup]
 nixPkgs = [
   "python312","poetry","file",
-  "chromium","glib","nspr","nss","dbus","atk","at-spi2-core","at-spi2-atk","cups","expat",
+  "chromium","glib","nspr","nss","dbus","atk","at-spi2-core","at-spi2-atk","cups","expat","zlib",
   "libxkbcommon","xorg.libX11","xorg.libXext","xorg.libXfixes","xorg.libXcomposite",
   "xorg.libXdamage","xorg.libXrandr","xorg.libxcb","mesa","libdrm","cairo","pango",
   "alsa-lib","gtk3","fontconfig","freetype","gdk-pixbuf"
 ]
-cmds = [] 
+cmds = []
 
 [phases.install]
 cmds = ["poetry install --no-root --only main"]
 
 [start]
-cmd = "set -e; PLAYWRIGHT_BROWSERS_PATH=/ms-playwright poetry run python -m playwright install chromium; exec poetry run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"
+cmd = "set -e; PLAYWRIGHT_BROWSERS_PATH=/ms-playwright poetry run python -m playwright install chromium; exec poetry run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"
+
