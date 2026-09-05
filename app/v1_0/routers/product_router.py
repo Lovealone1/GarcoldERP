@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import Literal, List, Dict, Any, Optional
 from datetime import date
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,14 +107,20 @@ async def list_products(
 @inject
 async def list_products_paginated(
     page: int = Query(1, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches reference, description or barcode"),
+    estado: Optional[Literal["activos", "inactivos"]] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: ProductService = Depends(
         Provide[ApplicationContainer.api_container.product_service]
     ),
 ):
+    """Filtering happens here rather than over a locally downloaded copy."""
     logger.debug(f"[ProductRouter] list_paginated page={page}")
     try:
-        return await service.list_paginated(page, db)
+        return await service.list_paginated(
+            page, db, page_size=page_size, q=q, estado=estado
+        )
     except HTTPException:
         raise
     except Exception as e:

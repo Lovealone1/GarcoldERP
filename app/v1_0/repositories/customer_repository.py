@@ -1,11 +1,59 @@
 from typing import Optional, List, Tuple, Iterable, Mapping
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Customer
 from app.v1_0.schemas import CustomerCreate, CustomerUpdate
 from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
+def _clean(value):
+    """A field holding only whitespace means "no filter"."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def build_customer_filters(
+    *,
+    q=None,
+    cities=None,
+    pending_balance=None,
+):
+    """
+    Translate the customers screen's filters into SQL.
+
+    They ran over a locally downloaded copy of the table; the city list is a
+    multi-select, so it becomes an IN clause.
+    """
+    filters = []
+
+    cleaned_cities = [c.strip() for c in (cities or []) if c and c.strip()]
+    if cleaned_cities:
+        filters.append(Customer.city.in_(cleaned_cities))
+
+    if pending_balance == "yes":
+        filters.append(Customer.balance > 0)
+    elif pending_balance == "no":
+        filters.append(Customer.balance <= 0)
+
+    term = _clean(q)
+    if term:
+        like = f"%{term}%"
+        conditions = [
+            Customer.name.ilike(like),
+            Customer.tax_id.ilike(like),
+            Customer.email.ilike(like),
+            Customer.phone.ilike(like),
+            Customer.city.ilike(like),
+        ]
+        if term.isdigit():
+            conditions.append(Customer.id == int(term))
+        filters.append(or_(*conditions))
+
+    return filters
+
+
 class CustomerRepository(BaseRepository[Customer]):
     def __init__(self):
         super().__init__(Customer)

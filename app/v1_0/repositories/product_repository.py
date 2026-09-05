@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any, Tuple, Iterable, Mapping
 from datetime import date, timedelta
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Product, SaleItem, Sale
@@ -9,6 +9,42 @@ from app.v1_0.schemas import ProductUpsert
 from app.v1_0.entities import SaleProductsDTO  
 from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
+
+def _clean(value):
+    """A field holding only whitespace means "no filter"."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def build_product_filters(*, q=None, estado=None):
+    """
+    Translate the products screen's filters into SQL.
+
+    `estado` is the UI's active/inactive toggle; anything else means no filter.
+    """
+    filters = []
+
+    if estado == "activos":
+        filters.append(Product.is_active.is_(True))
+    elif estado == "inactivos":
+        filters.append(Product.is_active.is_(False))
+
+    term = _clean(q)
+    if term:
+        like = f"%{term}%"
+        conditions = [
+            Product.reference.ilike(like),
+            Product.description.ilike(like),
+            Product.barcode.ilike(like),
+        ]
+        if term.isdigit():
+            conditions.append(Product.id == int(term))
+        filters.append(or_(*conditions))
+
+    return filters
+
 
 class ProductRepository(BaseRepository[Product]):
     def __init__(self) -> None:

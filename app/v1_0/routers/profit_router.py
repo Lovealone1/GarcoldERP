@@ -1,4 +1,5 @@
-from typing import List
+from datetime import datetime
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -21,14 +22,21 @@ router = APIRouter(prefix="/profits", tags=["Profits"])
 @inject
 async def list_profits(
     page: int = Query(1, ge=1, description="1-based page number"),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches the sale number"),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: ProfitService = Depends(
         Provide[ApplicationContainer.api_container.profit_service]
     ),
 ) -> ProfitPageDTO:
+    """Filtering happens here rather than over a locally downloaded copy."""
     logger.debug(f"[ProfitRouter] list_profits page={page}")
     try:
-        return await service.list_profits(page, db)
+        return await service.list_profits(
+            page, db, page_size=page_size, q=q, date_from=date_from, date_to=date_to
+        )
     except HTTPException:
         raise
     except Exception as e:
