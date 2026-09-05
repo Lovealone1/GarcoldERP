@@ -8,10 +8,12 @@ from app.core.security.deps import AuthContext, get_auth_context
 from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.core.logger import logger
 
 from app.v1_0.entities import PurchaseDTO, PurchaseItemViewDTO, PurchasePageDTO
 from app.v1_0.services import PurchaseService
+from .period_params import period_range, totals_with_period, with_period
 
 router = APIRouter(prefix="/purchases", tags=["Purchases"])
 
@@ -94,7 +96,7 @@ async def purchase_filter_options(
 
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Totals over the whole filtered set",
 )
 @inject
@@ -103,22 +105,21 @@ async def purchase_summary(
     status_name: Optional[str] = Query(None, alias="status"),
     bank: Optional[str] = Query(None),
     supplier: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
     ),
-) -> Dict[str, float]:
-    return await service.summarize_purchases(
+) -> Dict[str, Any]:
+    return totals_with_period(await service.summarize_purchases(
         db,
         q=q,
         status=status_name,
         bank=bank,
         supplier=supplier,
-        date_from=date_from,
-        date_to=date_to,
-    )
+        date_from=period.date_from,
+        date_to=period.date_to,
+    ), period)
 
 
 @router.get(
@@ -157,8 +158,7 @@ async def list_purchases(
     status_name: Optional[str] = Query(None, alias="status"),
     bank: Optional[str] = Query(None),
     supplier: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
@@ -170,7 +170,7 @@ async def list_purchases(
     """
     logger.debug(f"[PurchaseRouter] list_purchases page={page}")
     try:
-        return await service.list_purchases(
+        return with_period(await service.list_purchases(
             page,
             db,
             page_size=page_size,
@@ -178,9 +178,9 @@ async def list_purchases(
             status=status_name,
             bank=bank,
             supplier=supplier,
-            date_from=date_from,
-            date_to=date_to,
-        )
+            date_from=period.date_from,
+            date_to=period.date_to,
+        ), period)
     except HTTPException:
         raise
     except Exception as e:

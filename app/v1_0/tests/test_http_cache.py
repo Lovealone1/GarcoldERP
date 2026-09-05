@@ -146,3 +146,50 @@ class TestCorsOriginsAlias:
         # "*" also silently forces allow_credentials off in main.create_app.
         with pytest.raises(ValueError, match="CORS_ORIGINS"):
             self._settings(monkeypatch, CORS_ORIGINS="*", APP_ENV=env)
+
+
+class TestTheCacheExemptionTracksTheApiPrefix:
+    """
+    CACHEABLE_PREFIXES spells out the documentation paths, so it only works
+    while it agrees with the prefix the app is actually mounted under.
+
+    If the two ever drift, the docs move and their exemption does not: they
+    start being served no-store, which nothing else would report. This is the
+    reason API_PREFIX is a constant rather than a setting, asserted here so the
+    comment saying so cannot go stale.
+    """
+
+    def test_every_cacheable_prefix_lives_under_the_api_prefix(self):
+        from app.core.http_cache import CACHEABLE_PREFIXES
+        from app.main import API_PREFIX
+
+        wrong = [p for p in CACHEABLE_PREFIXES if not p.startswith(API_PREFIX)]
+        assert not wrong, (
+            f"cacheable prefixes outside {API_PREFIX}: {wrong} -- the docs "
+            "would be served no-store"
+        )
+
+    def test_the_documented_paths_are_the_ones_the_app_serves(self):
+        """The exemption is worthless if it names paths that do not exist."""
+        from app.core.http_cache import CACHEABLE_PREFIXES
+        from app.main import API_PREFIX, create_app
+
+        app = create_app()
+        served = {app.docs_url, app.redoc_url, app.openapi_url}
+        assert served == {
+            f"{API_PREFIX}/docs",
+            f"{API_PREFIX}/redoc",
+            f"{API_PREFIX}/openapi.json",
+        }
+        assert served <= set(CACHEABLE_PREFIXES)
+
+    def test_an_api_prefix_env_var_does_not_move_the_app(self, monkeypatch):
+        """
+        It used to look settable and was not: Settings has no such field and
+        ignores extras, so the getattr always fell through. Now it is a plain
+        constant, which cannot fail silently.
+        """
+        monkeypatch.setenv("API_PREFIX", "/somewhere-else")
+        from app.main import API_PREFIX
+
+        assert API_PREFIX == "/api"

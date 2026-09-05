@@ -15,11 +15,13 @@ from dependency_injector.wiring import inject, Provide
 from app.core.security.deps import AuthContext, get_auth_context
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.core.logger import logger
 
 from app.v1_0.entities import SaleDTO, SalePageDTO, SaleItemViewDTO
 from app.v1_0.services import SaleService
 from app.core.security.realtime_auth import build_channel_id_from_auth
+from .period_params import period_range, totals_with_period, with_period
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
 
@@ -126,7 +128,7 @@ async def sale_filter_options(
 
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Totals over the whole filtered set",
 )
 @inject
@@ -134,19 +136,18 @@ async def sale_summary(
     q: Optional[str] = Query(None),
     status_name: Optional[str] = Query(None, alias="status"),
     bank: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
 ):
-    return await service.summarize_sales(
+    return totals_with_period(await service.summarize_sales(
         db,
         q=q,
         status=status_name,
         bank=bank,
-        date_from=date_from,
-        date_to=date_to,
-    )
+        date_from=period.date_from,
+        date_to=period.date_to,
+    ), period)
 
 
 @router.get(
@@ -161,8 +162,7 @@ async def list_sales(
     q: Optional[str] = Query(None, description="Matches id, customer, bank or status"),
     status_name: Optional[str] = Query(None, alias="status", description="Exact status name"),
     bank: Optional[str] = Query(None, description="Exact bank name"),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
 ):
@@ -172,16 +172,16 @@ async def list_sales(
     """
     logger.debug(f"[SaleRouter] list_sales page={page}")
     try:
-        return await service.list_sales(
+        return with_period(await service.list_sales(
             page,
             db,
             page_size=page_size,
             q=q,
             status=status_name,
             bank=bank,
-            date_from=date_from,
-            date_to=date_to,
-        )
+            date_from=period.date_from,
+            date_to=period.date_to,
+        ), period)
     except HTTPException:
         raise
     except Exception as e:

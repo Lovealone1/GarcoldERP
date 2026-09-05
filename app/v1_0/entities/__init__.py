@@ -48,6 +48,7 @@ from .dashboard_DTO import (
 )
 from .auth_DTO import MeDTO, AuthSyncDTO, RoleOut
 from .user_DTO import UserDTO
+from .period import PeriodDTO
 __all__ = [
     "BankDTO","SaleInvoiceBankDTO",
     "CompanyDTO", "Regimen", "ALLOWED_FIELDS",
@@ -62,6 +63,7 @@ __all__ = [
     "PurchaseDTO", "PurchasePageDTO",
     "PurchaseItemDTO", "PurchaseItemViewDTO",
     "PurchasePaymentDTO", "PurchasePaymentViewDTO",
+    "PeriodDTO",
     "SaleDTO", "SalePageDTO",
     "SaleItemViewDescDTO", "SaleInvoiceDTO",
     "SaleItemDTO", "SaleItemViewDTO",

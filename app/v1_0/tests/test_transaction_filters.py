@@ -20,6 +20,7 @@ from app.v1_0.routers.transaction_router import (
     transaction_filter_options,
 )
 from app.v1_0.services import TransactionService
+from app.utils.date_utils import Period
 
 
 def sql(expression) -> str:
@@ -250,7 +251,7 @@ class TestServicePageSize:
 class TestRouterMapping:
     async def test_origin_all_becomes_no_filter(self, mocker):
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,
@@ -259,8 +260,7 @@ class TestRouterMapping:
             bank=None,
             type=None,
             origin="all",
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -270,7 +270,7 @@ class TestRouterMapping:
     @pytest.mark.parametrize("origin", ["auto", "manual"])
     async def test_a_real_origin_is_forwarded(self, mocker, origin):
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,
@@ -279,8 +279,7 @@ class TestRouterMapping:
             bank=None,
             type=None,
             origin=origin,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -290,7 +289,7 @@ class TestRouterMapping:
     async def test_the_type_query_param_maps_to_type_name(self, mocker):
         # `type` shadows a builtin, so the service argument is named type_name.
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,
@@ -299,8 +298,7 @@ class TestRouterMapping:
             bank=None,
             type="Ingreso",
             origin="all",
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )

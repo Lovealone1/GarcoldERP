@@ -32,6 +32,7 @@ from app.v1_0.routers.purchase_router import (
     purchase_summary,
 )
 from app.v1_0.services import ExpenseService, PurchaseService
+from app.utils.date_utils import Period
 
 
 def sql_all(filters) -> str:
@@ -144,7 +145,7 @@ class TestPurchaseService:
 class TestPurchaseRouter:
     async def test_status_alias_maps_through(self, mocker):
         service = mocker.Mock()
-        service.list_purchases = AsyncMock(return_value=None)
+        service.list_purchases = AsyncMock(return_value=mocker.Mock())
 
         await list_purchases(
             page=1,
@@ -153,8 +154,7 @@ class TestPurchaseRouter:
             status_name="Credito",
             bank=None,
             supplier=None,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -175,8 +175,7 @@ class TestPurchaseRouter:
             status_name=None,
             bank=None,
             supplier=None,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -237,7 +236,7 @@ class TestExpenseRouter:
     # The client already sent these; the endpoint used to ignore them.
     async def test_filters_reach_the_service(self, mocker):
         service = mocker.Mock()
-        service.list_paginated = AsyncMock(return_value=None)
+        service.list_paginated = AsyncMock(return_value=mocker.Mock())
 
         await list_expenses_paginated(
             page=2,
@@ -245,8 +244,7 @@ class TestExpenseRouter:
             q="arri",
             category="Arriendo",
             bank="Nequi",
-            date_from=datetime(2026, 1, 1),
-            date_to=datetime(2026, 2, 1),
+            period=Period(datetime(2026, 1, 1), datetime(2026, 2, 1)),
             db=None,
             service=service,
         )
@@ -266,7 +264,7 @@ class TestExpenseRouter:
         )
 
         summary = await expense_summary(
-            q=None, category=None, bank=None, date_from=None, date_to=None,
+            q=None, category=None, bank=None, period=Period(None, None),
             db=None, service=service,
         )
         options = await expense_filter_options(db=None, service=service)
