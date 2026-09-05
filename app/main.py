@@ -6,6 +6,7 @@ from typing import cast
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.http_cache import NoStoreCacheMiddleware
 from app.core.settings import settings
 from app.core.logger import logger
 from app.v1_0.v1_router import v1_router
@@ -83,6 +84,9 @@ def create_app() -> FastAPI:
 
     if "*" in origins:
         allow_credentials = False
+
+    # Outermost of the two, so the header lands on CORS preflight responses too.
+    app.add_middleware(NoStoreCacheMiddleware)
 
     app.add_middleware(
         CORSMiddleware,
