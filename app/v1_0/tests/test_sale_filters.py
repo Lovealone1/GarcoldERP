@@ -186,7 +186,7 @@ class TestRouterMapping:
         # `status` collides with the imported fastapi.status module in this
         # router, so the parameter is aliased.
         service = mocker.Mock()
-        service.list_sales = AsyncMock(return_value=None)
+        service.list_sales = AsyncMock(return_value=mocker.Mock())
 
         await list_sales(
             page=1,
@@ -203,7 +203,7 @@ class TestRouterMapping:
 
     async def test_forwards_page_size_and_dates(self, mocker):
         service = mocker.Mock()
-        service.list_sales = AsyncMock(return_value=None)
+        service.list_sales = AsyncMock(return_value=mocker.Mock())
 
         await list_sales(
             page=2,

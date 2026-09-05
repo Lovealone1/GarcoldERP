@@ -251,7 +251,7 @@ class TestServicePageSize:
 class TestRouterMapping:
     async def test_origin_all_becomes_no_filter(self, mocker):
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,
@@ -270,7 +270,7 @@ class TestRouterMapping:
     @pytest.mark.parametrize("origin", ["auto", "manual"])
     async def test_a_real_origin_is_forwarded(self, mocker, origin):
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,
@@ -289,7 +289,7 @@ class TestRouterMapping:
     async def test_the_type_query_param_maps_to_type_name(self, mocker):
         # `type` shadows a builtin, so the service argument is named type_name.
         service = mocker.Mock()
-        service.list_transactions = AsyncMock(return_value=None)
+        service.list_transactions = AsyncMock(return_value=mocker.Mock())
 
         await list_transactions(
             page=1,

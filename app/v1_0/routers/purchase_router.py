@@ -13,7 +13,7 @@ from app.core.logger import logger
 
 from app.v1_0.entities import PurchaseDTO, PurchaseItemViewDTO, PurchasePageDTO
 from app.v1_0.services import PurchaseService
-from .period_params import period_range
+from .period_params import period_range, totals_with_period, with_period
 
 router = APIRouter(prefix="/purchases", tags=["Purchases"])
 
@@ -96,7 +96,7 @@ async def purchase_filter_options(
 
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Totals over the whole filtered set",
 )
 @inject
@@ -110,8 +110,8 @@ async def purchase_summary(
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
     ),
-) -> Dict[str, float]:
-    return await service.summarize_purchases(
+) -> Dict[str, Any]:
+    return totals_with_period(await service.summarize_purchases(
         db,
         q=q,
         status=status_name,
@@ -119,7 +119,7 @@ async def purchase_summary(
         supplier=supplier,
         date_from=period.date_from,
         date_to=period.date_to,
-    )
+    ), period)
 
 
 @router.get(
@@ -170,7 +170,7 @@ async def list_purchases(
     """
     logger.debug(f"[PurchaseRouter] list_purchases page={page}")
     try:
-        return await service.list_purchases(
+        return with_period(await service.list_purchases(
             page,
             db,
             page_size=page_size,
@@ -180,7 +180,7 @@ async def list_purchases(
             supplier=supplier,
             date_from=period.date_from,
             date_to=period.date_to,
-        )
+        ), period)
     except HTTPException:
         raise
     except Exception as e:

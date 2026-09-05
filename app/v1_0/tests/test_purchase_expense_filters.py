@@ -145,7 +145,7 @@ class TestPurchaseService:
 class TestPurchaseRouter:
     async def test_status_alias_maps_through(self, mocker):
         service = mocker.Mock()
-        service.list_purchases = AsyncMock(return_value=None)
+        service.list_purchases = AsyncMock(return_value=mocker.Mock())
 
         await list_purchases(
             page=1,
@@ -236,7 +236,7 @@ class TestExpenseRouter:
     # The client already sent these; the endpoint used to ignore them.
     async def test_filters_reach_the_service(self, mocker):
         service = mocker.Mock()
-        service.list_paginated = AsyncMock(return_value=None)
+        service.list_paginated = AsyncMock(return_value=mocker.Mock())
 
         await list_expenses_paginated(
             page=2,

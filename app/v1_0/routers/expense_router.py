@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from app.core.logger import logger
 from app.v1_0.schemas import ExpenseCreate
 from app.v1_0.entities import ExpenseDTO, ExpensePageDTO
 from app.v1_0.services import ExpenseService
-from .period_params import period_range
+from .period_params import period_range, totals_with_period, with_period
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
@@ -120,7 +120,7 @@ async def list_expenses_paginated(
     """
     logger.debug(f"[ExpenseRouter] list_paginated page={page}")
     try:
-        return await service.list_paginated(
+        return with_period(await service.list_paginated(
             page,
             db,
             page_size=page_size,
@@ -129,7 +129,7 @@ async def list_expenses_paginated(
             bank=bank,
             date_from=period.date_from,
             date_to=period.date_to,
-        )
+        ), period)
     except HTTPException:
         raise
     except Exception as e:
@@ -158,7 +158,7 @@ async def expense_filter_options(
 
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Totals over the whole filtered set",
 )
 @inject
@@ -171,12 +171,12 @@ async def expense_summary(
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
     ),
-) -> Dict[str, float]:
-    return await service.summarize_expenses(
+) -> Dict[str, Any]:
+    return totals_with_period(await service.summarize_expenses(
         db,
         q=q,
         category=category,
         bank=bank,
         date_from=period.date_from,
         date_to=period.date_to,
-    )
+    ), period)

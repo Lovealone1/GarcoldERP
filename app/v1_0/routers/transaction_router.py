@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from app.utils.date_utils import Period
 from app.v1_0.schemas import TransactionCreate
 from app.v1_0.entities import TransactionDTO, TransactionPageDTO
 from app.v1_0.services import TransactionService
-from .period_params import period_range
+from .period_params import period_range, totals_with_period, with_period
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -126,7 +126,7 @@ async def transaction_filter_options(
 
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Total amount per type for the current filter",
 )
 @inject
@@ -140,14 +140,14 @@ async def transaction_summary(
     service: TransactionService = Depends(
         Provide[ApplicationContainer.api_container.transaction_service]
     ),
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """
     Totals over the whole filtered set, not just the visible page.
 
     The extract panel used to sum the rows the client had downloaded, which
     only agreed with reality because the client downloaded every page.
     """
-    return await service.summarize(
+    return totals_with_period(await service.summarize(
         db,
         q=q,
         bank=bank,
@@ -155,7 +155,7 @@ async def transaction_summary(
         origin=None if origin == "all" else origin,
         date_from=period.date_from,
         date_to=period.date_to,
-    )
+    ), period)
 
 
 @router.get(
@@ -183,7 +183,7 @@ async def list_transactions(
     The client previously walked every page to build a complete local copy and
     filtered that -- hundreds of sequential requests for a few visible rows.
     """
-    return await service.list_transactions(
+    return with_period(await service.list_transactions(
         page,
         db,
         page_size=page_size,
@@ -193,4 +193,4 @@ async def list_transactions(
         origin=None if origin == "all" else origin,
         date_from=period.date_from,
         date_to=period.date_to,
-    )
+    ), period)

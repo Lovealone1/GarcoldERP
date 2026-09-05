@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -11,7 +11,7 @@ from app.core.logger import logger
 
 from app.v1_0.entities import ProfitDTO, ProfitPageDTO, ProfitItemDTO
 from app.v1_0.services import ProfitService
-from .period_params import period_range
+from .period_params import period_range, totals_with_period, with_period
 
 router = APIRouter(prefix="/profits", tags=["Profits"])
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/profits", tags=["Profits"])
 # Declared before any parameterised GET so the literal path is reachable.
 @router.get(
     "/summary",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Total profit over the whole filtered set",
 )
 @inject
@@ -30,10 +30,10 @@ async def profit_summary(
     service: ProfitService = Depends(
         Provide[ApplicationContainer.api_container.profit_service]
     ),
-) -> Dict[str, float]:
-    return await service.summarize_profits(
+) -> Dict[str, Any]:
+    return totals_with_period(await service.summarize_profits(
         db, q=q, date_from=period.date_from, date_to=period.date_to
-    )
+    ), period)
 
 
 @router.get(
@@ -55,9 +55,9 @@ async def list_profits(
     """Filtering happens here rather than over a locally downloaded copy."""
     logger.debug(f"[ProfitRouter] list_profits page={page}")
     try:
-        return await service.list_profits(
+        return with_period(await service.list_profits(
             page, db, page_size=page_size, q=q, date_from=period.date_from, date_to=period.date_to
-        )
+        ), period)
     except HTTPException:
         raise
     except Exception as e:
