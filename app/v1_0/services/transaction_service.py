@@ -1,3 +1,4 @@
+from datetime import datetime
 from math import ceil
 from decimal import Decimal
 from typing import Optional
@@ -608,10 +609,44 @@ class TransactionService:
 
         return True
 
+    #: Upper bound on client-supplied page_size, so one request cannot ask
+    #: for the entire table and undo the point of paginating.
+    MAX_PAGE_SIZE = 100
+
+    async def list_filter_options(self, db: AsyncSession) -> dict[str, list[str]]:
+        return await self.tx_repo.distinct_filter_options(session=db)
+
+    async def summarize(
+        self,
+        db: AsyncSession,
+        q: str | None = None,
+        bank: str | None = None,
+        type_name: str | None = None,
+        origin: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, float]:
+        return await self.tx_repo.summarize_by_type(
+            session=db,
+            q=q,
+            bank=bank,
+            type_name=type_name,
+            origin=origin,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
     async def list_transactions(
         self,
         page: int,
         db: AsyncSession,
+        page_size: int | None = None,
+        q: str | None = None,
+        bank: str | None = None,
+        type_name: str | None = None,
+        origin: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> TransactionPageDTO:
         """
         List transactions in a paginated format with resolved relations.
@@ -628,13 +663,19 @@ class TransactionService:
         Returns:
             TransactionPageDTO with items and pagination metadata.
         """
-        page_size = self.PAGE_SIZE
+        page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
         items, total, *_ = await self.tx_repo.list_paginated(
             offset=offset,
             limit=page_size,
             session=db,
+            q=q,
+            bank=bank,
+            type_name=type_name,
+            origin=origin,
+            date_from=date_from,
+            date_to=date_to,
         )
 
         view_items = [

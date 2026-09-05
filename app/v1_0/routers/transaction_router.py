@@ -1,4 +1,6 @@
-from typing import Dict
+from datetime import datetime
+from typing import Dict, List, Literal, Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -100,16 +102,95 @@ async def delete_transaction(
     }
 
 @router.get(
+    "/filter-options",
+    response_model=Dict[str, List[str]],
+    summary="Distinct bank and type names present in transactions",
+)
+@inject
+async def transaction_filter_options(
+    db: AsyncSession = Depends(get_db),
+    service: TransactionService = Depends(
+        Provide[ApplicationContainer.api_container.transaction_service]
+    ),
+) -> Dict[str, List[str]]:
+    """
+    Feeds the screen's filter dropdowns.
+
+    They used to be derived from whatever rows the client had downloaded, which
+    only worked because it downloaded everything.
+    """
+    return await service.list_filter_options(db)
+
+
+@router.get(
+    "/summary",
+    response_model=Dict[str, float],
+    summary="Total amount per type for the current filter",
+)
+@inject
+async def transaction_summary(
+    q: Optional[str] = Query(None),
+    bank: Optional[str] = Query(None),
+    type: Optional[str] = Query(None),
+    origin: Optional[Literal["all", "auto", "manual"]] = Query("all"),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    service: TransactionService = Depends(
+        Provide[ApplicationContainer.api_container.transaction_service]
+    ),
+) -> Dict[str, float]:
+    """
+    Totals over the whole filtered set, not just the visible page.
+
+    The extract panel used to sum the rows the client had downloaded, which
+    only agreed with reality because the client downloaded every page.
+    """
+    return await service.summarize(
+        db,
+        q=q,
+        bank=bank,
+        type_name=type,
+        origin=None if origin == "all" else origin,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get(
     "",
     response_model=TransactionPageDTO,
-    summary="List manual transactions (paginated)",
+    summary="List transactions (paginated, filtered server-side)",
 )
 @inject
 async def list_transactions(
     page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches id, description, bank or type"),
+    bank: Optional[str] = Query(None, description="Exact bank name"),
+    type: Optional[str] = Query(None, description="Exact transaction type name"),
+    origin: Optional[Literal["all", "auto", "manual"]] = Query("all"),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: TransactionService = Depends(
         Provide[ApplicationContainer.api_container.transaction_service]
     ),
 ) -> TransactionPageDTO:
-    return await service.list_transactions(page, db)
+    """
+    Filtering happens here rather than in the browser.
+
+    The client previously walked every page to build a complete local copy and
+    filtered that -- hundreds of sequential requests for a few visible rows.
+    """
+    return await service.list_transactions(
+        page,
+        db,
+        page_size=page_size,
+        q=q,
+        bank=bank,
+        type_name=type,
+        origin=None if origin == "all" else origin,
+        date_from=date_from,
+        date_to=date_to,
+    )

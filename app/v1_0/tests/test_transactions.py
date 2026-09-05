@@ -553,11 +553,30 @@ async def test_router_list_transactions_success(
 
     result = await list_transactions(
         page=2,
+        page_size=None,
+        q=None,
+        bank=None,
+        type=None,
+        origin="all",
+        date_from=None,
+        date_to=None,
         db=db_session,
         service=mock_service,
     )
 
-    mock_service.list_transactions.assert_awaited_once_with(2, db_session)
+    # Filters travel with the request now. "all" is the UI's word for no origin
+    # filter and must reach the service as None, not as a literal to match on.
+    mock_service.list_transactions.assert_awaited_once_with(
+        2,
+        db_session,
+        page_size=None,
+        q=None,
+        bank=None,
+        type_name=None,
+        origin=None,
+        date_from=None,
+        date_to=None,
+    )
 
     assert result.page == 2
     assert len(result.items) == 1
