@@ -13,7 +13,15 @@ from app.v1_0.v1_router import v1_router
 from app.app_containers import ApplicationContainer
 from app.storage.database import async_session, dispose_engine
 from app.v1_0.routers import realtime_router
-API_PREFIX = getattr(settings, "API_PREFIX", "/api")
+#: Fixed, not configurable. An API_PREFIX environment variable was silently
+#: discarded here: Settings has no such field and is configured extra="ignore",
+#: so the getattr this replaces always fell through to the default.
+#:
+#: Making it a real setting would need CACHEABLE_PREFIXES in app/core/http_cache.py
+#: to follow it -- those paths are spelled out -- or the docs would move and
+#: their cache exemption would not, quietly making them uncacheable. The
+#: frontend's rewrite and the WebSocket URL assume this prefix too.
+API_PREFIX = "/api"
 
 
 def _warn_if_multi_worker() -> None:

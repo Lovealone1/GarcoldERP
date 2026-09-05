@@ -19,7 +19,7 @@ clean_url: URL = URL.create(
 
 engine = create_async_engine(
     clean_url.render_as_string(hide_password=False),
-    echo=bool(getattr(settings, "DEBUG", False)),
+    echo=settings.DEBUG,
     poolclass=NullPool,
     pool_pre_ping=True,
     execution_options={"isolation_level": "READ COMMITTED"},
