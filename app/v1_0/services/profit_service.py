@@ -30,6 +30,17 @@ class ProfitService:
     #: Upper bound on client-supplied page_size.
     MAX_PAGE_SIZE = 100
 
+    async def summarize_profits(
+        self,
+        db: AsyncSession,
+        q: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict:
+        return await self.profit_repository.summarize(
+            session=db, q=q, date_from=date_from, date_to=date_to
+        )
+
     async def list_profits(
         self,
         page: int,
@@ -61,12 +72,19 @@ class ProfitService:
             date_to=date_to,
         )
 
+        # One query for the whole page, instead of one request per row from
+        # the browser.
+        customer_by_sale = await self.profit_repository.customer_names_for(
+            [p.sale_id for p in items], session=db
+        )
+
         view_items = [
             ProfitDTO(
                 id=p.id,
                 sale_id=p.sale_id,
                 profit=float(p.profit) if p.profit is not None else 0.0,
                 created_at=p.created_at,
+                customer=customer_by_sale.get(p.sale_id),
             )
             for p in items
         ]

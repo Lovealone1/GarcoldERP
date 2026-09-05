@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Dict, Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -12,6 +12,27 @@ from app.v1_0.entities import ProfitDTO, ProfitPageDTO, ProfitItemDTO
 from app.v1_0.services import ProfitService
 
 router = APIRouter(prefix="/profits", tags=["Profits"])
+
+
+# Declared before any parameterised GET so the literal path is reachable.
+@router.get(
+    "/summary",
+    response_model=Dict[str, float],
+    summary="Total profit over the whole filtered set",
+)
+@inject
+async def profit_summary(
+    q: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    service: ProfitService = Depends(
+        Provide[ApplicationContainer.api_container.profit_service]
+    ),
+) -> Dict[str, float]:
+    return await service.summarize_profits(
+        db, q=q, date_from=date_from, date_to=date_to
+    )
 
 
 @router.get(

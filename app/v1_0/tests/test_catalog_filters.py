@@ -176,6 +176,8 @@ class TestPageSizeContract:
     ):
         repo = mocker.Mock()
         repo.list_paginated = AsyncMock(return_value=([], 0, False))
+        # Profits resolve customer names for the page in one extra query.
+        repo.customer_names_for = AsyncMock(return_value={})
 
         service = service_cls.__new__(service_cls)
         setattr(service, repo_attr, repo)
@@ -208,6 +210,7 @@ class TestPageSizeContract:
     ):
         repo = mocker.Mock()
         repo.list_paginated = AsyncMock(return_value=([], 0, False))
+        repo.customer_names_for = AsyncMock(return_value={})
 
         service = service_cls.__new__(service_cls)
         setattr(service, repo_attr, repo)
@@ -216,3 +219,48 @@ class TestPageSizeContract:
 
         await getattr(service, method)(3, None, page_size=20)
         assert repo.list_paginated.await_args.kwargs["offset"] == 40
+
+
+class TestProfitCustomerNames:
+    """
+    The utilidades screen downloaded every profit and then issued one
+    getSaleById per sale just to show a customer name. The name now travels
+    with the row, resolved for the page in a single query.
+    """
+
+    def _service(self, repo):
+        s = ProfitService.__new__(ProfitService)
+        s.profit_repository = repo
+        s.PAGE_SIZE = 16
+        s.MAX_PAGE_SIZE = 100
+        return s
+
+    async def test_the_name_is_resolved_once_for_the_whole_page(self, mocker):
+        rows = [
+            mocker.Mock(id=1, sale_id=10, profit=5.0, created_at=datetime(2026, 1, 1)),
+            mocker.Mock(id=2, sale_id=11, profit=7.0, created_at=datetime(2026, 1, 2)),
+            mocker.Mock(id=3, sale_id=10, profit=9.0, created_at=datetime(2026, 1, 3)),
+        ]
+        repo = mocker.Mock()
+        repo.list_paginated = AsyncMock(return_value=(rows, 3, False))
+        repo.customer_names_for = AsyncMock(return_value={10: "Perez", 11: "Gomez"})
+
+        result = await self._service(repo).list_profits(1, None)
+
+        repo.customer_names_for.assert_awaited_once()
+        assert [i.customer for i in result.items] == ["Perez", "Gomez", "Perez"]
+
+    async def test_an_unresolved_sale_yields_none_rather_than_failing(self, mocker):
+        rows = [mocker.Mock(id=1, sale_id=99, profit=5.0, created_at=datetime(2026, 1, 1))]
+        repo = mocker.Mock()
+        repo.list_paginated = AsyncMock(return_value=(rows, 1, False))
+        repo.customer_names_for = AsyncMock(return_value={})
+
+        result = await self._service(repo).list_profits(1, None)
+
+        assert result.items[0].customer is None
+
+    async def test_search_also_matches_the_customer_name(self):
+        rendered = sql_all(build_profit_filters(q="perez")).lower()
+        assert "customer" in rendered
+        assert "%perez%" in rendered
