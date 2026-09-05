@@ -8,10 +8,12 @@ from app.core.security.deps import AuthContext, get_auth_context
 from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.core.logger import logger
 
 from app.v1_0.entities import PurchaseDTO, PurchaseItemViewDTO, PurchasePageDTO
 from app.v1_0.services import PurchaseService
+from .period_params import period_range
 
 router = APIRouter(prefix="/purchases", tags=["Purchases"])
 
@@ -103,8 +105,7 @@ async def purchase_summary(
     status_name: Optional[str] = Query(None, alias="status"),
     bank: Optional[str] = Query(None),
     supplier: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
@@ -116,8 +117,8 @@ async def purchase_summary(
         status=status_name,
         bank=bank,
         supplier=supplier,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=period.date_from,
+        date_to=period.date_to,
     )
 
 
@@ -157,8 +158,7 @@ async def list_purchases(
     status_name: Optional[str] = Query(None, alias="status"),
     bank: Optional[str] = Query(None),
     supplier: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
@@ -178,8 +178,8 @@ async def list_purchases(
             status=status_name,
             bank=bank,
             supplier=supplier,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=period.date_from,
+            date_to=period.date_to,
         )
     except HTTPException:
         raise

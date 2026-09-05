@@ -11,9 +11,11 @@ from app.core.logger import logger
 from app.storage.database.db_connector import get_db
 
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.v1_0.schemas import TransactionCreate
 from app.v1_0.entities import TransactionDTO, TransactionPageDTO
 from app.v1_0.services import TransactionService
+from .period_params import period_range
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -133,8 +135,7 @@ async def transaction_summary(
     bank: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     origin: Optional[Literal["all", "auto", "manual"]] = Query("all"),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: TransactionService = Depends(
         Provide[ApplicationContainer.api_container.transaction_service]
@@ -152,8 +153,8 @@ async def transaction_summary(
         bank=bank,
         type_name=type,
         origin=None if origin == "all" else origin,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=period.date_from,
+        date_to=period.date_to,
     )
 
 
@@ -170,8 +171,7 @@ async def list_transactions(
     bank: Optional[str] = Query(None, description="Exact bank name"),
     type: Optional[str] = Query(None, description="Exact transaction type name"),
     origin: Optional[Literal["all", "auto", "manual"]] = Query("all"),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: TransactionService = Depends(
         Provide[ApplicationContainer.api_container.transaction_service]
@@ -191,6 +191,6 @@ async def list_transactions(
         bank=bank,
         type_name=type,
         origin=None if origin == "all" else origin,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=period.date_from,
+        date_to=period.date_to,
     )

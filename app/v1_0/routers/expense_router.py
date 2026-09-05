@@ -9,11 +9,13 @@ from app.core.security.deps import AuthContext, get_auth_context
 from app.core.security.realtime_auth import build_channel_id_from_auth
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.core.logger import logger
 
 from app.v1_0.schemas import ExpenseCreate
 from app.v1_0.entities import ExpenseDTO, ExpensePageDTO
 from app.v1_0.services import ExpenseService
+from .period_params import period_range
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
@@ -105,8 +107,7 @@ async def list_expenses_paginated(
     q: Optional[str] = Query(None, description="Matches id, category or bank"),
     category: Optional[str] = Query(None, description="Exact category name"),
     bank: Optional[str] = Query(None, description="Exact bank name"),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
@@ -126,8 +127,8 @@ async def list_expenses_paginated(
             q=q,
             category=category,
             bank=bank,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=period.date_from,
+            date_to=period.date_to,
         )
     except HTTPException:
         raise
@@ -165,8 +166,7 @@ async def expense_summary(
     q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     bank: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
@@ -177,6 +177,6 @@ async def expense_summary(
         q=q,
         category=category,
         bank=bank,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=period.date_from,
+        date_to=period.date_to,
     )

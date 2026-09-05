@@ -6,10 +6,12 @@ from dependency_injector.wiring import inject, Provide
 
 from app.storage.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
+from app.utils.date_utils import Period
 from app.core.logger import logger
 
 from app.v1_0.entities import ProfitDTO, ProfitPageDTO, ProfitItemDTO
 from app.v1_0.services import ProfitService
+from .period_params import period_range
 
 router = APIRouter(prefix="/profits", tags=["Profits"])
 
@@ -23,15 +25,14 @@ router = APIRouter(prefix="/profits", tags=["Profits"])
 @inject
 async def profit_summary(
     q: Optional[str] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: ProfitService = Depends(
         Provide[ApplicationContainer.api_container.profit_service]
     ),
 ) -> Dict[str, float]:
     return await service.summarize_profits(
-        db, q=q, date_from=date_from, date_to=date_to
+        db, q=q, date_from=period.date_from, date_to=period.date_to
     )
 
 
@@ -45,8 +46,7 @@ async def list_profits(
     page: int = Query(1, ge=1, description="1-based page number"),
     page_size: Optional[int] = Query(None, ge=1, le=100),
     q: Optional[str] = Query(None, description="Matches the sale number"),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
+    period: Period = Depends(period_range),
     db: AsyncSession = Depends(get_db),
     service: ProfitService = Depends(
         Provide[ApplicationContainer.api_container.profit_service]
@@ -56,7 +56,7 @@ async def list_profits(
     logger.debug(f"[ProfitRouter] list_profits page={page}")
     try:
         return await service.list_profits(
-            page, db, page_size=page_size, q=q, date_from=date_from, date_to=date_to
+            page, db, page_size=page_size, q=q, date_from=period.date_from, date_to=period.date_to
         )
     except HTTPException:
         raise

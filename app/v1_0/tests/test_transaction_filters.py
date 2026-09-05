@@ -20,6 +20,7 @@ from app.v1_0.routers.transaction_router import (
     transaction_filter_options,
 )
 from app.v1_0.services import TransactionService
+from app.utils.date_utils import Period
 
 
 def sql(expression) -> str:
@@ -259,8 +260,7 @@ class TestRouterMapping:
             bank=None,
             type=None,
             origin="all",
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -279,8 +279,7 @@ class TestRouterMapping:
             bank=None,
             type=None,
             origin=origin,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -299,8 +298,7 @@ class TestRouterMapping:
             bank=None,
             type="Ingreso",
             origin="all",
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )

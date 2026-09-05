@@ -14,6 +14,7 @@ from app.v1_0.routers.transaction_router import (
     delete_transaction,
     list_transactions,
 )
+from app.utils.date_utils import Period
 
 def make_tx_dto(
     id: int = 1,
@@ -558,8 +559,7 @@ async def test_router_list_transactions_success(
         bank=None,
         type=None,
         origin="all",
-        date_from=None,
-        date_to=None,
+        period=Period(None, None),
         db=db_session,
         service=mock_service,
     )
@@ -596,6 +596,7 @@ async def test_router_list_transactions_http_error_propagates(
     with pytest.raises(HTTPException) as exc:
         await list_transactions(
             page=1,
+            period=Period(None, None),
             db=db_session,
             service=mock_service,
         )

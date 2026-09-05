@@ -16,6 +16,7 @@ from app.v1_0.entities import SalePageDTO
 from app.v1_0.repositories.sale_repository import SaleRepository, build_sale_filters
 from app.v1_0.routers.sale_router import list_sales, sale_filter_options, sale_summary
 from app.v1_0.services import SaleService
+from app.utils.date_utils import Period
 
 
 def sql(expression) -> str:
@@ -193,8 +194,7 @@ class TestRouterMapping:
             q=None,
             status_name="Cancelada",
             bank=None,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -211,8 +211,7 @@ class TestRouterMapping:
             q="x",
             status_name=None,
             bank="Nequi",
-            date_from=datetime(2026, 1, 1),
-            date_to=datetime(2026, 2, 1),
+            period=Period(datetime(2026, 1, 1), datetime(2026, 2, 1)),
             db=None,
             service=service,
         )
@@ -234,8 +233,7 @@ class TestSummaryAndOptions:
             q=None,
             status_name=None,
             bank=None,
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
@@ -251,8 +249,7 @@ class TestSummaryAndOptions:
             q="perez",
             status_name="Cancelada",
             bank="Nequi",
-            date_from=None,
-            date_to=None,
+            period=Period(None, None),
             db=None,
             service=service,
         )
