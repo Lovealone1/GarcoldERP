@@ -1,3 +1,4 @@
+from datetime import datetime
 from math import ceil
 from typing import List, Optional
 
@@ -334,10 +335,40 @@ class ExpenseService:
 
         return True
 
+    #: Upper bound on client-supplied page_size.
+    MAX_PAGE_SIZE = 100
+
+    async def list_filter_options(self, db: AsyncSession) -> dict[str, list[str]]:
+        return await self.expense_repo.distinct_filter_options(session=db)
+
+    async def summarize_expenses(
+        self,
+        db: AsyncSession,
+        q: str | None = None,
+        category: str | None = None,
+        bank: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, float]:
+        return await self.expense_repo.summarize(
+            session=db,
+            q=q,
+            category=category,
+            bank=bank,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
     async def list_paginated(
         self,
         page: int,
         db: AsyncSession,
+        page_size: int | None = None,
+        q: str | None = None,
+        category: str | None = None,
+        bank: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> ExpensePageDTO:
         """
         List expenses in a paginated format with resolved category and bank names.
@@ -361,7 +392,7 @@ class ExpenseService:
                 - has_next: Whether a next page exists.
                 - has_prev: Whether a previous page exists.
         """
-        page_size = self.PAGE_SIZE
+        page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
         async with db.begin():
@@ -369,6 +400,11 @@ class ExpenseService:
                 session=db,
                 offset=offset,
                 limit=page_size,
+                q=q,
+                category=category,
+                bank=bank,
+                date_from=date_from,
+                date_to=date_to,
             )
 
         view_items: List[ExpenseViewDTO] = [

@@ -10,6 +10,19 @@ from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
 
 
+def _clean(value: Optional[str]) -> Optional[str]:
+    """
+    Normalise an exact-match filter.
+
+    A form field that contains only whitespace means "no filter", not "match a
+    name made of spaces". Free-text search already trimmed; these did not.
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 def build_sale_filters(
     *,
     q: Optional[str] = None,
@@ -26,6 +39,9 @@ def build_sale_filters(
     what its dropdowns offer.
     """
     filters: List = []
+
+    status = _clean(status)
+    bank = _clean(bank)
 
     if status:
         filters.append(Sale.status.has(Status.name == status))

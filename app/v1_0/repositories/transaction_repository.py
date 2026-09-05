@@ -11,6 +11,19 @@ from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
 
 
+def _clean(value: Optional[str]) -> Optional[str]:
+    """
+    Normalise an exact-match filter.
+
+    A form field that contains only whitespace means "no filter", not "match a
+    name made of spaces". Free-text search already trimmed; these did not.
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 def build_transaction_filters(
     *,
     q: Optional[str] = None,
@@ -29,6 +42,9 @@ def build_transaction_filters(
     """
     # id == -1 is the synthetic opening-balance row, pinned separately.
     filters: List = [Transaction.id != -1]
+
+    bank = _clean(bank)
+    type_name = _clean(type_name)
 
     if bank:
         filters.append(Transaction.bank.has(Bank.name == bank))
