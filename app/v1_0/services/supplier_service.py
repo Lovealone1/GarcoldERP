@@ -217,10 +217,19 @@ class SupplierService:
                 detail="Failed to list suppliers",
             )
 
+    #: Upper bound on client-supplied page_size.
+    MAX_PAGE_SIZE = 100
+
+    async def list_cities(self, db: AsyncSession) -> list[str]:
+        return await self.supplier_repository.distinct_cities(session=db)
+
     async def list_paginated(
         self,
         page: int,
         db: AsyncSession,
+        page_size: int | None = None,
+        q: str | None = None,
+        cities: list[str] | None = None,
     ) -> SupplierPageDTO:
         """
         List suppliers in a paginated format.
@@ -241,13 +250,15 @@ class SupplierService:
                 - has_next: Whether a next page exists.
                 - has_prev: Whether a previous page exists.
         """
-        page_size = self.PAGE_SIZE
+        page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
         items, total, *_ = await self.supplier_repository.list_paginated(
             offset=offset,
             limit=page_size,
             session=db,
+            q=q,
+            cities=cities,
         )
 
         view_items = [

@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Literal, Optional, Dict, List
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -106,14 +106,26 @@ async def list_customers(
 @inject
 async def list_customers_paginated(
     page: int = Query(1, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches name, tax id, email, phone or city"),
+    cities: Optional[List[str]] = Query(None, description="Repeatable; matches any"),
+    pending_balance: Optional[Literal["yes", "no"]] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: CustomerService = Depends(
         Provide[ApplicationContainer.api_container.customer_service]
     ),
 ):
+    """Filtering happens here rather than over a locally downloaded copy."""
     logger.debug(f"[CustomerRouter] list_paginated page={page}")
     try:
-        return await service.list_paginated(page, db)
+        return await service.list_paginated(
+            page,
+            db,
+            page_size=page_size,
+            q=q,
+            cities=cities,
+            pending_balance=pending_balance,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -299,3 +311,22 @@ async def create_simple_payment(
             status_code=500,
             detail="Failed to register payment",
         )
+
+
+@router.get(
+    "/cities",
+    response_model=List[str],
+    summary="Distinct cities present in the data",
+)
+@inject
+async def customer_cities(
+    db: AsyncSession = Depends(get_db),
+    service: CustomerService = Depends(
+        Provide[ApplicationContainer.api_container.customer_service]
+    ),
+) -> List[str]:
+    """
+    Feeds the city multi-select, which used to be derived from the rows the
+    client had downloaded.
+    """
+    return await service.list_cities(db)

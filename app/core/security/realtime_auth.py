@@ -1,23 +1,33 @@
 from fastapi import WebSocket, status, WebSocketException
 from sqlalchemy import select
 
-from app.storage.database import async_session
 from app.core.logger import logger
-from app.core.security.jwt import verify_token
-from app.v1_0.models import User
 from app.core.security.deps import AuthContext
+from app.core.security.jwt import verify_token
+from app.storage.database import async_session
+from app.v1_0.models import User
+
+#: The only realtime channel.
+#:
+#: This deployment serves a single company: there is no tenant or company
+#: column on users, sales, banks or any other table, so there is nothing to
+#: partition on and every authenticated user is entitled to the same stream.
+#: A per-tenant channel would need a tenant dimension in the schema first.
+GLOBAL_CHANNEL = "global"
+
 
 class WsIdentity:
-    def __init__(self, sub: str, tenant_id: str | None, user_id: str | None):
+    """Who is on the other end of an authenticated socket."""
+
+    def __init__(self, sub: str, user_id: str | None):
         self.sub = sub
-        self.tenant_id = tenant_id
         self.user_id = user_id
 
 
 async def get_ws_identity(websocket: WebSocket) -> WsIdentity:
     token = websocket.query_params.get("token")
     if not token:
-        logger.warning("[WS_AUTH] missing token url=%s", websocket.url)
+        logger.warning("[WS_AUTH] missing token")
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
             reason="Missing token",
@@ -25,7 +35,8 @@ async def get_ws_identity(websocket: WebSocket) -> WsIdentity:
 
     try:
         claims = await verify_token(token)
-    except Exception as e:
+    except Exception:
+        logger.warning("[WS_AUTH] invalid token")
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
             reason="Invalid token",
@@ -47,22 +58,12 @@ async def get_ws_identity(websocket: WebSocket) -> WsIdentity:
             reason="User not provisioned",
         )
 
-    tenant_id = getattr(user, "tenant_id", None)
-    user_pk = getattr(user, "external_sub", None) or getattr(user, "id", None)
-
-    ident = WsIdentity(
-        sub=sub,
-        tenant_id=str(tenant_id) if tenant_id else None,
-        user_id=str(user_pk) if user_pk else None,
-    )
-    return ident
-
-
+    return WsIdentity(sub=sub, user_id=str(user.external_sub or user.id))
 
 
 def build_channel_id(identity: WsIdentity) -> str:
-    return "global"
+    return GLOBAL_CHANNEL
 
 
 def build_channel_id_from_auth(ctx: AuthContext) -> str:
-    return "global"
+    return GLOBAL_CHANNEL

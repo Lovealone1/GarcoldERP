@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Optional, Dict, List, Any
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -102,12 +102,18 @@ async def list_suppliers(
 @inject
 async def list_suppliers_paginated(
     page: int = Query(1, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches name, tax id, email, phone or city"),
+    cities: Optional[List[str]] = Query(None, description="Repeatable; matches any"),
     db: AsyncSession = Depends(get_db),
     service: SupplierService = Depends(Provide[ApplicationContainer.api_container.supplier_service]),
 ):
+    """Filtering happens here rather than over a locally downloaded copy."""
     logger.debug(f"[SupplierRouter] list_paginated page={page}")
     try:
-        return await service.list_paginated(page, db)
+        return await service.list_paginated(
+            page, db, page_size=page_size, q=q, cities=cities
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -205,3 +211,22 @@ async def delete_supplier(
     return {
         "message": f"Supplier with ID {supplier_id} deleted successfully"
     }
+
+
+@router.get(
+    "/cities",
+    response_model=List[str],
+    summary="Distinct cities present in the data",
+)
+@inject
+async def supplier_cities(
+    db: AsyncSession = Depends(get_db),
+    service: SupplierService = Depends(
+        Provide[ApplicationContainer.api_container.supplier_service]
+    ),
+) -> List[str]:
+    """
+    Feeds the city multi-select, which used to be derived from the rows the
+    client had downloaded.
+    """
+    return await service.list_cities(db)

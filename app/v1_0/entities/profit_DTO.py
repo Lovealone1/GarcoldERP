@@ -9,5 +9,8 @@ class ProfitDTO:
     sale_id: int
     profit: float
     created_at: datetime
+    #: Resolved here so the screen does not have to fetch each sale to show a
+    #: name. It previously issued one request per sale to fill this in.
+    customer: str | None = None
 
 ProfitPageDTO = PageDTO[ProfitDTO]

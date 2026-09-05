@@ -469,7 +469,44 @@ class PurchaseService:
                     exc_info=True,
                 )
 
-    async def list_purchases(self, page: int, db: AsyncSession) -> PurchasePageDTO:
+    #: Upper bound on client-supplied page_size.
+    MAX_PAGE_SIZE = 100
+
+    async def list_filter_options(self, db: AsyncSession) -> dict[str, list[str]]:
+        return await self.purchase_repository.distinct_filter_options(session=db)
+
+    async def summarize_purchases(
+        self,
+        db: AsyncSession,
+        q: str | None = None,
+        status: str | None = None,
+        bank: str | None = None,
+        supplier: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, float]:
+        return await self.purchase_repository.summarize(
+            session=db,
+            q=q,
+            status=status,
+            bank=bank,
+            supplier=supplier,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+    async def list_purchases(
+        self,
+        page: int,
+        db: AsyncSession,
+        page_size: int | None = None,
+        q: str | None = None,
+        status: str | None = None,
+        bank: str | None = None,
+        supplier: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> PurchasePageDTO:
         """
         List paginated purchases with resolved relation names.
 
@@ -489,11 +526,19 @@ class PurchaseService:
                 - has_next: True if there is a next page.
                 - has_prev: True if there is a previous page.
         """
-        page_size = self.PAGE_SIZE
+        page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
         items_raw, total, *_ = await self.purchase_repository.list_paginated(
-            offset=offset, limit=page_size, session=db
+            offset=offset,
+            limit=page_size,
+            session=db,
+            q=q,
+            status=status,
+            bank=bank,
+            supplier=supplier,
+            date_from=date_from,
+            date_to=date_to,
         )
 
         view_items: List[PurchaseDTO] = [

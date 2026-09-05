@@ -1,6 +1,6 @@
 from typing import Literal, Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 
 MediaPolicy = Literal["public", "signed", "proxy"]
 
@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     APP_ENV: Literal["local", "dev", "staging", "prod"] = "local"
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
-    CORS_ORIGINS: str = "*"
+    # Accepts CORS_ORIGIN too: the deployed .env spells it in the singular, so
+    # the plural name silently fell back to "*" -- which for a financial API
+    # meant every origin was allowed.
+    CORS_ORIGINS: str = Field(default="*", validation_alias=AliasChoices("CORS_ORIGINS", "CORS_ORIGIN"))
     LOG_LEVEL: str = "INFO"
 
     # Auth / Supabase
@@ -78,6 +81,11 @@ class Settings(BaseSettings):
     def _cross_checks(self):
         if self.MEDIA_POLICY == "public" and not self.MEDIA_PUBLIC_BASE:
             raise ValueError("MEDIA_PUBLIC_BASE is required when MEDIA_POLICY=public")
+        if self.APP_ENV in ("staging", "prod") and self.CORS_ORIGINS.strip() == "*":
+            raise ValueError(
+                "CORS_ORIGINS must list explicit origins outside local/dev; "
+                '"*" also forces allow_credentials off'
+            )
         return self
 
     # ---------- helpers ----------

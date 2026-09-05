@@ -588,11 +588,16 @@ async def test_router_list_suppliers_paginated_success(
 
     result = await list_suppliers_paginated(
         page=1,
+        page_size=None,
+        q=None,
+        cities=None,
         db=db_session,
         service=mock_service,
     )
 
-    mock_service.list_paginated.assert_awaited_once_with(1, db_session)
+    mock_service.list_paginated.assert_awaited_once_with(
+        1, db_session, page_size=None, q=None, cities=None
+    )
     assert result.page == 1
     assert result.total == 10
     assert len(result.items) == 2

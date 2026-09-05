@@ -1,3 +1,4 @@
+from datetime import datetime
 from math import ceil
 from typing import List
 
@@ -26,7 +27,29 @@ class ProfitService:
         self.product_repository = product_repository
         self.PAGE_SIZE = 16
 
-    async def list_profits(self, page: int, db: AsyncSession) -> ProfitPageDTO:
+    #: Upper bound on client-supplied page_size.
+    MAX_PAGE_SIZE = 100
+
+    async def summarize_profits(
+        self,
+        db: AsyncSession,
+        q: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict:
+        return await self.profit_repository.summarize(
+            session=db, q=q, date_from=date_from, date_to=date_to
+        )
+
+    async def list_profits(
+        self,
+        page: int,
+        db: AsyncSession,
+        page_size: int | None = None,
+        q: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> ProfitPageDTO:
         """
         Return paginated profit records.
 
@@ -37,11 +60,22 @@ class ProfitService:
         Returns:
             ProfitPageDTO with items and pagination metadata.
         """
-        page_size = self.PAGE_SIZE
+        page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
         items, total, *_ = await self.profit_repository.list_paginated(
-            offset=offset, limit=page_size, session=db
+            offset=offset,
+            limit=page_size,
+            session=db,
+            q=q,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        # One query for the whole page, instead of one request per row from
+        # the browser.
+        customer_by_sale = await self.profit_repository.customer_names_for(
+            [p.sale_id for p in items], session=db
         )
 
         view_items = [
@@ -50,6 +84,7 @@ class ProfitService:
                 sale_id=p.sale_id,
                 profit=float(p.profit) if p.profit is not None else 0.0,
                 created_at=p.created_at,
+                customer=customer_by_sale.get(p.sale_id),
             )
             for p in items
         ]

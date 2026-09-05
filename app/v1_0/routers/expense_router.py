@@ -1,4 +1,6 @@
-from typing import Dict
+from datetime import datetime
+from typing import Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -99,16 +101,82 @@ async def delete_expense(
 @inject
 async def list_expenses_paginated(
     page: int = Query(1, ge=1, description="1-based page number"),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches id, category or bank"),
+    category: Optional[str] = Query(None, description="Exact category name"),
+    bank: Optional[str] = Query(None, description="Exact bank name"),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: ExpenseService = Depends(
         Provide[ApplicationContainer.api_container.expense_service]
     ),
 ) -> ExpensePageDTO:
+    """
+    Filtering happens here now. The client already sent these parameters, but
+    the endpoint ignored them and the screen filtered only the rows on the
+    current page -- so the result and its pagination disagreed.
+    """
     logger.debug(f"[ExpenseRouter] list_paginated page={page}")
     try:
-        return await service.list_paginated(page, db)
+        return await service.list_paginated(
+            page,
+            db,
+            page_size=page_size,
+            q=q,
+            category=category,
+            bank=bank,
+            date_from=date_from,
+            date_to=date_to,
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[ExpenseRouter] list_paginated error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list expenses")
+
+
+@router.get(
+    "/filter-options",
+    response_model=Dict[str, List[str]],
+    summary="Distinct category and bank names present in expenses",
+)
+@inject
+async def expense_filter_options(
+    db: AsyncSession = Depends(get_db),
+    service: ExpenseService = Depends(
+        Provide[ApplicationContainer.api_container.expense_service]
+    ),
+) -> Dict[str, List[str]]:
+    """
+    Feeds the filter dropdowns. The bank list was previously built from the
+    rows on the current page, so the options changed as you paged.
+    """
+    return await service.list_filter_options(db)
+
+
+@router.get(
+    "/summary",
+    response_model=Dict[str, float],
+    summary="Totals over the whole filtered set",
+)
+@inject
+async def expense_summary(
+    q: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    bank: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    service: ExpenseService = Depends(
+        Provide[ApplicationContainer.api_container.expense_service]
+    ),
+) -> Dict[str, float]:
+    return await service.summarize_expenses(
+        db,
+        q=q,
+        category=category,
+        bank=bank,
+        date_from=date_from,
+        date_to=date_to,
+    )

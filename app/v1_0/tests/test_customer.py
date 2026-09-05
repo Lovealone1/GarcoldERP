@@ -578,11 +578,19 @@ async def test_router_list_customers_paginated_success(
 
     result = await list_customers_paginated(
         page=1,
+        page_size=None,
+        q=None,
+        cities=None,
+        pending_balance=None,
         db=db_session,
         service=mock_service,
     )
 
-    mock_service.list_paginated.assert_awaited_once_with(1, db_session)
+    # Filters travel with the request now; unset ones must arrive as None so
+    # the service can tell "no filter" from an empty value.
+    mock_service.list_paginated.assert_awaited_once_with(
+        1, db_session, page_size=None, q=None, cities=None, pending_balance=None
+    )
     assert result.page == 1
     assert result.total == 10
     assert len(result.items) == 2
@@ -599,6 +607,10 @@ async def test_router_list_customers_paginated_error_returns_500(
     with pytest.raises(HTTPException) as exc:
         await list_customers_paginated(
             page=1,
+            page_size=None,
+            q=None,
+            cities=None,
+            pending_balance=None,
             db=db_session,
             service=mock_service,
         )

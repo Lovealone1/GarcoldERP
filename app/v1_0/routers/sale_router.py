@@ -108,19 +108,80 @@ async def delete_sale(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.get(
+    "/filter-options",
+    response_model=Dict[str, List[str]],
+    summary="Distinct bank and status names present in sales",
+)
+@inject
+async def sale_filter_options(
+    db: AsyncSession = Depends(get_db),
+    service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
+):
+    """
+    Feeds the screen's filter dropdowns, which used to be derived from the
+    rows the client had downloaded.
+    """
+    return await service.list_filter_options(db)
+
+
+@router.get(
+    "/summary",
+    response_model=Dict[str, float],
+    summary="Totals over the whole filtered set",
+)
+@inject
+async def sale_summary(
+    q: Optional[str] = Query(None),
+    status_name: Optional[str] = Query(None, alias="status"),
+    bank: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
+):
+    return await service.summarize_sales(
+        db,
+        q=q,
+        status=status_name,
+        bank=bank,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get(
     "",
     response_model=SalePageDTO,
-    summary="List sales (paginated)",
+    summary="List sales (paginated, filtered server-side)",
 )
 @inject
 async def list_sales(
     page: int = Query(1, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches id, customer, bank or status"),
+    status_name: Optional[str] = Query(None, alias="status", description="Exact status name"),
+    bank: Optional[str] = Query(None, description="Exact bank name"),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: SaleService = Depends(Provide[ApplicationContainer.api_container.sale_service]),
 ):
+    """
+    Filtering happens here rather than in the browser, which previously had to
+    walk every page to build a complete local copy first.
+    """
     logger.debug(f"[SaleRouter] list_sales page={page}")
     try:
-        return await service.list_sales(page, db)
+        return await service.list_sales(
+            page,
+            db,
+            page_size=page_size,
+            q=q,
+            status=status_name,
+            bank=bank,
+            date_from=date_from,
+            date_to=date_to,
+        )
     except HTTPException:
         raise
     except Exception as e:

@@ -1,11 +1,44 @@
 from typing import Optional, List, Tuple, Dict, Any, Iterable, Mapping
-from sqlalchemy import select, func, insert
+from sqlalchemy import select, func, insert, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Supplier
 from app.v1_0.schemas import SupplierCreate
 from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
+
+def _clean(value):
+    """A field holding only whitespace means "no filter"."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def build_supplier_filters(*, q=None, cities=None):
+    """Translate the suppliers screen's filters into SQL."""
+    filters = []
+
+    cleaned_cities = [c.strip() for c in (cities or []) if c and c.strip()]
+    if cleaned_cities:
+        filters.append(Supplier.city.in_(cleaned_cities))
+
+    term = _clean(q)
+    if term:
+        like = f"%{term}%"
+        conditions = [
+            Supplier.name.ilike(like),
+            Supplier.tax_id.ilike(like),
+            Supplier.email.ilike(like),
+            Supplier.phone.ilike(like),
+            Supplier.city.ilike(like),
+        ]
+        if term.isdigit():
+            conditions.append(Supplier.id == int(term))
+        filters.append(or_(*conditions))
+
+    return filters
+
 
 class SupplierRepository(BaseRepository[Supplier]):
     def __init__(self) -> None:

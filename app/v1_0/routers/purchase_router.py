@@ -73,6 +73,54 @@ async def finalize_purchase(
             detail="Failed to finalize purchase",
         )
 
+# Registered before GET /{purchase_id}: FastAPI matches routes in order, so a
+# parameterised path declared first would swallow /filter-options and /summary
+# and reject them as an invalid purchase id.
+@router.get(
+    "/filter-options",
+    response_model=Dict[str, List[str]],
+    summary="Distinct bank, status and supplier names present in purchases",
+)
+@inject
+async def purchase_filter_options(
+    db: AsyncSession = Depends(get_db),
+    service: PurchaseService = Depends(
+        Provide[ApplicationContainer.api_container.purchase_service]
+    ),
+) -> Dict[str, List[str]]:
+    """Feeds the filter dropdowns, previously derived from downloaded rows."""
+    return await service.list_filter_options(db)
+
+
+@router.get(
+    "/summary",
+    response_model=Dict[str, float],
+    summary="Totals over the whole filtered set",
+)
+@inject
+async def purchase_summary(
+    q: Optional[str] = Query(None),
+    status_name: Optional[str] = Query(None, alias="status"),
+    bank: Optional[str] = Query(None),
+    supplier: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    service: PurchaseService = Depends(
+        Provide[ApplicationContainer.api_container.purchase_service]
+    ),
+) -> Dict[str, float]:
+    return await service.summarize_purchases(
+        db,
+        q=q,
+        status=status_name,
+        bank=bank,
+        supplier=supplier,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 @router.get(
     "/{purchase_id}",
     response_model=PurchaseDTO,
@@ -104,14 +152,35 @@ async def get_purchase(
 @inject
 async def list_purchases(
     page: int = Query(1, ge=1, description="1-based page number"),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Matches id, supplier, bank or status"),
+    status_name: Optional[str] = Query(None, alias="status"),
+    bank: Optional[str] = Query(None),
+    supplier: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     service: PurchaseService = Depends(
         Provide[ApplicationContainer.api_container.purchase_service]
     ),
 ) -> PurchasePageDTO:
+    """
+    Filtering happens here rather than in the browser, which previously walked
+    every page to build a complete local copy first.
+    """
     logger.debug(f"[PurchaseRouter] list_purchases page={page}")
     try:
-        return await service.list_purchases(page, db)
+        return await service.list_purchases(
+            page,
+            db,
+            page_size=page_size,
+            q=q,
+            status=status_name,
+            bank=bank,
+            supplier=supplier,
+            date_from=date_from,
+            date_to=date_to,
+        )
     except HTTPException:
         raise
     except Exception as e:

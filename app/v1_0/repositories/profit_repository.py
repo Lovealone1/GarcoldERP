@@ -1,13 +1,54 @@
 from typing import Optional, List, Tuple, Dict, Any
 from datetime import date
 
-from sqlalchemy import select, delete, func, Date, cast
+from sqlalchemy import select, delete, func, Date, String, cast, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.models import Profit
+from app.v1_0.models import Customer, Profit, Sale
 from app.v1_0.schemas import ProfitCreate
 from .base_repository import BaseRepository
 from .paginated import list_paginated_keyset
+def _clean(value):
+    """A field holding only whitespace means "no filter"."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def build_profit_filters(*, q=None, date_from=None, date_to=None):
+    """
+    Translate the profits screen's filters into SQL.
+
+    The search box matches against the sale number, as a substring, which is
+    what the client-side version did.
+    """
+    filters = []
+
+    if date_from is not None:
+        filters.append(Profit.created_at >= date_from)
+    if date_to is not None:
+        filters.append(Profit.created_at <= date_to)
+
+    term = _clean(q)
+    if term:
+        like = f"%{term}%"
+        filters.append(
+            or_(
+                cast(Profit.sale_id, String).ilike(like),
+                # The screen searches by customer too; it used to do so against
+                # names it had fetched one sale at a time.
+                Profit.sale_id.in_(
+                    select(Sale.id)
+                    .join(Customer, Sale.customer_id == Customer.id)
+                    .where(Customer.name.ilike(like))
+                ),
+            )
+        )
+
+    return filters
+
+
 class ProfitRepository(BaseRepository[Profit]):
     def __init__(self) -> None:
         super().__init__(Profit)
@@ -47,7 +88,10 @@ class ProfitRepository(BaseRepository[Profit]):
         self,
         offset: int,
         limit: int,
-        session: AsyncSession
+        session: AsyncSession,
+        q=None,
+        date_from=None,
+        date_to=None,
     ) -> Tuple[List[Profit], int]:
         """
         Keyset pagination: (created_at DESC, id DESC).
@@ -61,7 +105,9 @@ class ProfitRepository(BaseRepository[Profit]):
             id_col=Profit.id,                
             limit=limit,
             offset=offset,
-            base_filters=(),                 
+            base_filters=tuple(
+                build_profit_filters(q=q, date_from=date_from, date_to=date_to)
+            ),
             eager=(),                        
             pin_enabled=False,               
             pin_predicate=None,
@@ -107,3 +153,43 @@ class ProfitRepository(BaseRepository[Profit]):
             {"date": r["date"].isoformat(), "profit": float(r["profit"])}
             for r in rows
         ]
+
+    async def customer_names_for(self, sale_ids, *, session: AsyncSession) -> dict[int, str]:
+        """
+        Customer name per sale id, in one query.
+
+        Replaces the screen's per-sale lookups.
+        """
+        ids = [int(i) for i in sale_ids if i is not None]
+        if not ids:
+            return {}
+
+        rows = (
+            await session.execute(
+                select(Sale.id, Customer.name)
+                .join(Customer, Sale.customer_id == Customer.id)
+                .where(Sale.id.in_(ids))
+            )
+        ).all()
+        return {int(sale_id): name for sale_id, name in rows}
+
+    async def summarize(
+        self,
+        *,
+        session: AsyncSession,
+        q=None,
+        date_from=None,
+        date_to=None,
+    ) -> dict:
+        """Total profit over the whole filtered set, not just the page."""
+        filters = build_profit_filters(q=q, date_from=date_from, date_to=date_to)
+        row = (
+            await session.execute(
+                select(
+                    func.coalesce(func.sum(Profit.profit), 0.0),
+                    func.count(Profit.id),
+                ).where(*filters)
+            )
+        ).first()
+        total, count = row or (0.0, 0)
+        return {"total": float(total or 0.0), "count": int(count or 0)}

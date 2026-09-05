@@ -3,7 +3,11 @@ PYTHON_VERSION = "3.12"
 PYTHONUNBUFFERED = "1"
 POETRY_VIRTUALENVS_IN_PROJECT = "true"
 POETRY_NO_INTERACTION = "1"
-WEB_CONCURRENCY = "2"
+# Realtime connections live in this process's memory (app/core/realtime.py),
+# so a second worker would broadcast to a set that does not contain the
+# client's socket and the event would be lost. Raising this requires a
+# shared bus (Redis pub/sub or LISTEN/NOTIFY) first.
+WEB_CONCURRENCY = "1"
 PLAYWRIGHT_BROWSERS_PATH = "/ms-playwright"
 NIXPACKS_PKG_LIBRARIES = "expat zlib glib nss dbus atk cairo pango alsa-lib gtk3 fontconfig freetype gdk-pixbuf libxkbcommon"
 LD_LIBRARY_PATH = "/nix/var/nix/profiles/default/lib:/usr/local/lib:/usr/lib:${LD_LIBRARY_PATH}"
