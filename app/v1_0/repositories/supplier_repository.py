@@ -104,7 +104,13 @@ class SupplierRepository(BaseRepository[Supplier]):
         return True
 
     async def list_paginated(
-    self, *, offset: int, limit: int, session: AsyncSession
+        self,
+        *,
+        offset: int,
+        limit: int,
+        session: AsyncSession,
+        q: Optional[str] = None,
+        cities: Optional[List[str]] = None,
     ) -> Tuple[list[Supplier], int, bool]:
         items, total, has_next = await list_paginated_keyset(
             session=session,
@@ -113,12 +119,24 @@ class SupplierRepository(BaseRepository[Supplier]):
             id_col=Supplier.id,
             limit=limit,
             offset=offset,
-            base_filters=(),  
+            base_filters=tuple(build_supplier_filters(q=q, cities=cities)),
             eager=(),
             pin_enabled=False,
             pin_predicate=None,
         )
         return items, total, has_next
+
+    async def distinct_cities(self, *, session: AsyncSession) -> List[str]:
+        """City names present in suppliers, for the screen's multi-select."""
+        rows = (
+            await session.execute(
+                select(Supplier.city)
+                .where(Supplier.city.is_not(None), func.trim(Supplier.city) != "")
+                .distinct()
+                .order_by(Supplier.city)
+            )
+        ).scalars().all()
+        return list(rows)
 
     async def list_suppliers(
         self,
