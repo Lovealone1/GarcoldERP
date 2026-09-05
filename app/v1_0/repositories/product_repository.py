@@ -152,16 +152,22 @@ class ProductRepository(BaseRepository[Product]):
         return entity
 
     async def list_paginated(
-        self, *, offset: int, limit: int, session: AsyncSession
+        self,
+        *,
+        offset: int,
+        limit: int,
+        session: AsyncSession,
+        q: Optional[str] = None,
+        estado: Optional[str] = None,
     ) -> Tuple[List[Product], int, bool]:
         items, total, has_next = await list_paginated_keyset(
             session=session,
             model=Product,
-            created_col=Product.created_at,  
+            created_col=Product.created_at,
             id_col=Product.id,
             limit=limit,
             offset=offset,
-            base_filters=(),                  
+            base_filters=tuple(build_product_filters(q=q, estado=estado)),
             eager=(),                       
             pin_enabled=False,               
             pin_predicate=None,
