@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Set, Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Header, HTTPException, status
 
-from app.storage.database.db_connector import get_db
+from app.storage.database.db_connector import async_session
 from app.core.security.jwt import verify_token
 from app.v1_0.models import User,Role
 
@@ -64,14 +64,33 @@ class AuthDeps:
 auth_deps = AuthDeps()
 
 async def get_auth_context(
-    db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(None),
 ) -> AuthContext:
     """
     Resolves authenticated context (user, role, permissions) from the Authorization header.
 
+    Runs on its own short-lived session, deliberately not the one the handler
+    receives from ``get_db``.
+
+    FastAPI caches ``Depends(get_db)`` per request, so while this dependency
+    asked for a session it got the *same* object the endpoint later works with.
+    Its SELECTs autobegin a transaction on that session and nothing ever ends
+    it, so by the time a service reached ``async with db.begin()`` SQLAlchemy
+    raised ``A transaction is already begun on this Session``. Authentication
+    is applied to every router (see app/v1_0/v1_router.py), so that broke every
+    endpoint whose service opens its own transaction block -- expenses and the
+    customer detail among them.
+
+    Owning a separate session also keeps the two concerns independent: an
+    authentication read is not committed or rolled back as part of a business
+    write, and a failed business transaction cannot invalidate the identity
+    that authorised it. ``get_ws_identity`` already worked this way.
+
+    ``AuthContext.user`` is detached once this session closes. Its loaded
+    columns stay readable; lazy relationship access would not, so everything
+    the context needs -- the role code -- is resolved to a plain value here.
+
     Args:
-        db: Async database session.
         authorization: Authorization header with Bearer token.
 
     Returns:
@@ -81,7 +100,8 @@ async def get_auth_context(
         HTTPException 401 if token or user are invalid.
     """
     try:
-        return await auth_deps.context(db, authorization)
+        async with async_session() as db:
+            return await auth_deps.context(db, authorization)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
