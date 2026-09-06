@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import dataclass
 import pytest
 from unittest.mock import AsyncMock
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.v1_0.repositories import (
     BankRepository, 
@@ -49,6 +50,17 @@ def fake_auth_ctx():
 
 @dataclass
 class FakeAsyncSession(AsyncSession):
+    """
+    Stand-in for AsyncSession that reproduces its transaction rules.
+
+    `begin()` used to be permissive here: calling it on a session that was
+    already in a transaction quietly re-entered instead of failing. The real
+    AsyncSession raises `InvalidRequestError("A transaction is already begun on
+    this Session.")`, which is the error the expenses and customer endpoints
+    returned in production while this suite stayed green. The double now raises
+    the same way, so that class of bug fails a test instead of a request.
+    """
+
     began: bool = False
     committed: bool = False
     rolled_back: bool = False
@@ -63,17 +75,29 @@ class FakeAsyncSession(AsyncSession):
     class _BeginContext:
         def __init__(self, outer: "FakeAsyncSession"):
             self.outer = outer
+            # Raised at use, not at construction: `session.begin()` builds the
+            # context manager and only the real AsyncSession's __aenter__ /
+            # __await__ touches the transaction state.
+            self.error = (
+                InvalidRequestError("A transaction is already begun on this Session.")
+                if outer._in_tx
+                else None
+            )
+
+        def _start(self) -> None:
+            if self.error is not None:
+                raise self.error
+            self.outer.began = True
+            self.outer._in_tx = True
 
         def __await__(self):
             async def _inner():
-                self.outer.began = True
-                self.outer._in_tx = True
+                self._start()
 
             return _inner().__await__()
 
         async def __aenter__(self):
-            self.outer.began = True
-            self.outer._in_tx = True
+            self._start()
             return self.outer
 
         async def __aexit__(self, exc_type, exc, tb):
@@ -96,6 +120,10 @@ class FakeAsyncSession(AsyncSession):
 
     def in_transaction(self) -> bool:
         return self._in_tx
+
+    def autobegin(self) -> None:
+        """Mark the session as mid-transaction, the way any statement would."""
+        self._in_tx = True
 
 @pytest.fixture
 def db_session() -> FakeAsyncSession:
