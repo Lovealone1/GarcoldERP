@@ -6,6 +6,7 @@ from app.core.logger import logger
 from app.v1_0.entities import ExpenseCategoryDTO
 from app.v1_0.repositories import ExpenseCategoryRepository
 from app.v1_0.schemas import ExpenseCategoryCreate
+from app.utils.tx import maybe_begin
 
 
 class ExpenseCategoryService:
@@ -49,7 +50,7 @@ class ExpenseCategoryService:
         """
         logger.info("[ExpenseCategoryService] Creating category: %s", payload)
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 c = await self.repo.create_category(payload, db)
             logger.info("[ExpenseCategoryService] Created ID=%s", c.id)
             return ExpenseCategoryDTO(id=c.id, name=c.name)
@@ -72,7 +73,7 @@ class ExpenseCategoryService:
         """
         logger.debug("[ExpenseCategoryService] Get ID=%s", category_id)
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 c = await self._require(category_id, db)
             return ExpenseCategoryDTO(id=c.id, name=c.name)
         except HTTPException:
@@ -97,7 +98,7 @@ class ExpenseCategoryService:
         """
         logger.debug("[ExpenseCategoryService] List all")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.repo.get_all_categories(db)
             return [ExpenseCategoryDTO(id=c.id, name=c.name) for c in rows]
         except Exception as e:
@@ -119,7 +120,7 @@ class ExpenseCategoryService:
         """
         logger.warning("[ExpenseCategoryService] Delete ID=%s", category_id)
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 ok = await self.repo.delete_category(category_id, db)
             if not ok:
                 raise HTTPException(status_code=404, detail="Expense category not found.")

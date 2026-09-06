@@ -32,6 +32,20 @@ engine = create_async_engine(
 async_session = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession)
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    The request's session, owned by the endpoint that handles it.
+
+    FastAPI caches this dependency per request, so everything that declares
+    `Depends(get_db)` -- the handler and any dependency above it -- receives the
+    same object. The transaction on it therefore has to have one owner: a
+    dependency that runs a statement here autobegins a transaction the handler
+    never opened and never closes, and the handler's own `begin()` then fails
+    with `A transaction is already begun on this Session`.
+
+    So anything that needs the database *before* the handler runs opens its own
+    session instead (see `get_auth_context`), and services guard their
+    transaction blocks with `app.utils.tx.maybe_begin`.
+    """
     session: AsyncSession = async_session()
     try:
         yield session

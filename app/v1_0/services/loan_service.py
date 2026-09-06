@@ -19,6 +19,7 @@ from app.v1_0.schemas import (
     TransactionCreate,
 )
 from .transaction_service import TransactionService
+from app.utils.tx import maybe_begin
 
 
 class LoanService:
@@ -158,7 +159,7 @@ class LoanService:
             loan_id,
         )
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 l = await self._require(loan_id, db)
             return LoanDTO(
                 id=l.id,
@@ -195,7 +196,7 @@ class LoanService:
         """
         logger.debug("[LoanService] List all loans")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.loan_repository.list_all(db)
             return [
                 LoanDTO(
@@ -233,7 +234,7 @@ class LoanService:
             LoanPageDTO with items and pagination metadata.
         """
         offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
+        async with maybe_begin(db):
             items, total = await self.loan_repository.list_paginated(
                 offset=offset,
                 limit=self.PAGE_SIZE,

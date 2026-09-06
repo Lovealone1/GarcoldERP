@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logger import logger
 from app.v1_0.entities import StatusDTO
 from app.v1_0.repositories import StatusRepository
+from app.utils.tx import maybe_begin
 
 
 class StatusService:
@@ -33,7 +34,7 @@ class StatusService:
         """
         logger.debug("[StatusService] List statuses")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.status_repository.list_statuses(db)
             return [StatusDTO(id=s.id, name=s.name) for s in rows]
         except Exception as e:

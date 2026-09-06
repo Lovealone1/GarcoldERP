@@ -6,6 +6,7 @@ from typing import Any, Optional
 from app.v1_0.entities import CompanyDTO, Regimen
 from app.v1_0.models import Company
 from app.v1_0.repositories import CompanyRepository
+from app.utils.tx import maybe_begin
 
 
 class CompanyService:
@@ -36,7 +37,7 @@ class CompanyService:
         Raises:
             ValueError: If `regimen` stored cannot be mapped to the Regimen enum.
         """
-        async with session.begin():
+        async with maybe_begin(session):
             c: Company = await self.company_repository.patch_single(session, **fields)
 
         regimen = c.regimen if isinstance(c.regimen, Regimen) else Regimen(c.regimen)

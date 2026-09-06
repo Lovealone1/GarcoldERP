@@ -6,6 +6,7 @@ from app.core.logger import logger
 from app.v1_0.entities import UserDTO
 from app.v1_0.repositories import RoleRepository, UserRepository
 from .supabase_admin import SupabaseAdminService
+from app.utils.tx import maybe_begin
 
 
 class UserService:
@@ -28,7 +29,7 @@ class UserService:
             - Database update is transactional.
             - Supabase metadata sync is best-effort and non-fatal.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             await self.user_repo.set_role_by_sub(sub, role_id, db)
 
         try:
@@ -128,5 +129,5 @@ class UserService:
         """
         Set a user's active flag by `sub`.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             await self.user_repo.set_active_by_sub(sub, is_active, db)

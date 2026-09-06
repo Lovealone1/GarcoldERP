@@ -20,6 +20,7 @@ from app.v1_0.schemas import (
     InvestmentWithdrawIn,
 )
 from .transaction_service import TransactionService
+from app.utils.tx import maybe_begin
 
 
 class InvestmentService:
@@ -204,7 +205,7 @@ class InvestmentService:
             investment_id,
         )
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 i = await self._require(investment_id, db)
             return InvestmentDTO(
                 id=i.id,
@@ -241,7 +242,7 @@ class InvestmentService:
         """
         logger.debug("[InvestmentService] List all investments")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.investment_repository.list_all(db)
             return [
                 InvestmentDTO(
@@ -279,7 +280,7 @@ class InvestmentService:
             InvestmentPageDTO with items and pagination metadata.
         """
         offset = max(page - 1, 0) * self.PAGE_SIZE
-        async with db.begin():
+        async with maybe_begin(db):
             items, total = await self.investment_repository.list_paginated(
                 offset=offset,
                 limit=self.PAGE_SIZE,

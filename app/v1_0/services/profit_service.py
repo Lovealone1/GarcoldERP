@@ -12,6 +12,7 @@ from app.v1_0.repositories import (
     ProfitItemRepository,
     ProfitRepository,
 )
+from app.utils.tx import maybe_begin
 
 class ProfitService:
     """Application service for profit summaries and per-item profit details."""
@@ -116,7 +117,7 @@ class ProfitService:
         Returns:
             Profit ORM instance.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             profit = await self.profit_repository.get_by_sale(sale_id=sale_id, session=db)
             if not profit:
                 raise HTTPException(status_code=404, detail="Profit not found for the given sale.")
@@ -137,7 +138,7 @@ class ProfitService:
         Returns:
             List of ProfitItemDTO.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             rows = await self.profit_item_repository.get_by_sale(sale_id=sale_id, session=db)
 
             dtos: List[ProfitItemDTO] = []

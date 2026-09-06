@@ -9,6 +9,7 @@ from app.v1_0.repositories import SupplierRepository
 from app.v1_0.entities import SupplierDTO, SupplierPageDTO
 from app.core.logger import logger
 from app.core.realtime import publish_realtime_event
+from app.utils.tx import maybe_begin
 
 class SupplierService:
     def __init__(self, supplier_repository: SupplierRepository) -> None:
@@ -149,7 +150,7 @@ class SupplierService:
         """
         logger.debug(f"[SupplierService] Get supplier ID={supplier_id}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 s = await self._require(supplier_id, db)
             return SupplierDTO(
                 id=s.id,
@@ -191,7 +192,7 @@ class SupplierService:
         """
         logger.debug("[SupplierService] List all suppliers")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.supplier_repository.list_all(db)
             return [
                 SupplierDTO(

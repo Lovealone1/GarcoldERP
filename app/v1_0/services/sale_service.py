@@ -33,6 +33,7 @@ from app.v1_0.schemas import (
     ProfitCreate,
     SaleProfitDetailCreate,
 )
+from app.utils.tx import maybe_begin
 
 class SaleService:
     def __init__(
@@ -729,7 +730,7 @@ class SaleService:
         Raises:
             HTTPException: If the sale does not exist.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             sale = await self.sale_repository.get_by_id(sale_id, session=db)
             if not sale:
                 raise HTTPException(status_code=404, detail="Sale not found")

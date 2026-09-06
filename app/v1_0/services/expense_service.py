@@ -15,6 +15,7 @@ from app.v1_0.repositories import (
 )
 from app.v1_0.schemas import ExpenseCreate, TransactionCreate
 from app.v1_0.services import TransactionService
+from app.utils.tx import maybe_begin
 
 
 class ExpenseService:
@@ -395,7 +396,7 @@ class ExpenseService:
         page_size = min(page_size or self.PAGE_SIZE, self.MAX_PAGE_SIZE)
         offset = max(page - 1, 0) * page_size
 
-        async with db.begin():
+        async with maybe_begin(db):
             items, total, *_ = await self.expense_repo.list_paginated(
                 session=db,
                 offset=offset,
