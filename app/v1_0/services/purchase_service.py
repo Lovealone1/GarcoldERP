@@ -18,6 +18,7 @@ from app.v1_0.services.transaction_service import TransactionService
 from app.v1_0.entities import PurchaseItemDTO, PurchaseDTO, PurchasePageDTO, PurchaseItemViewDTO
 from app.v1_0.schemas import PurchaseInsert, PurchaseItemCreate, TransactionCreate
 from app.core.realtime import publish_realtime_event
+from app.utils.tx import maybe_begin
 
 class PurchaseService:
     def __init__(
@@ -588,7 +589,7 @@ class PurchaseService:
         Raises:
             HTTPException: If the purchase does not exist.
         """
-        async with db.begin():
+        async with maybe_begin(db):
             p = await self.purchase_repository.get_by_id(purchase_id, session=db)
             if not p:
                 raise HTTPException(status_code=404, detail="Purchase not found")

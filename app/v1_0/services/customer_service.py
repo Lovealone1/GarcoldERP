@@ -9,6 +9,7 @@ from app.v1_0.schemas import CustomerCreate, CustomerUpdate, TransactionCreate
 from app.v1_0.repositories import CustomerRepository, BankRepository
 from app.v1_0.entities import CustomerDTO, CustomerPageDTO
 from .transaction_service import TransactionService
+from app.utils.tx import maybe_begin
 
 class CustomerService:
     def __init__(self, 
@@ -133,7 +134,7 @@ class CustomerService:
         """
         logger.debug(f"[CustomerService] Get customer ID={customer_id}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 c = await self._require(customer_id, db)
             return CustomerDTO(
                 id=c.id, 
@@ -167,7 +168,7 @@ class CustomerService:
         """
         logger.debug("[CustomerService] List all customers")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.customer_repository.list_all(db)
             return [
                 CustomerDTO(

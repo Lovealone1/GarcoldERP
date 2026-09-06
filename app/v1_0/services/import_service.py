@@ -19,6 +19,7 @@ from app.v1_0.repositories import (
     ProductRepository,
     SupplierRepository,
 )
+from app.utils.tx import maybe_begin
 
 
 class ImportService:
@@ -110,7 +111,7 @@ class ImportService:
                 "meta": meta,
             }
 
-        async with db.begin():
+        async with maybe_begin(db):
             inserted = await repo.insert_many(mapped, session=db, chunk_size=1000)
 
         job_id = hashlib.sha1(content).hexdigest()[:12]

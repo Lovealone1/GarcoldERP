@@ -9,6 +9,7 @@ from app.v1_0.repositories import ProductRepository
 from app.v1_0.schemas import ProductUpsert
 from app.v1_0.entities import ProductDTO, ProductPageDTO, SaleProductsDTO
 from app.core.realtime import publish_realtime_event
+from app.utils.tx import maybe_begin
 
 class ProductService:
     def __init__(self, product_repository: ProductRepository) -> None:
@@ -149,7 +150,7 @@ class ProductService:
         """
         logger.debug(f"[ProductService] Get product ID={product_id}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 p = await self._require(product_id, db)
             return ProductDTO(
                 id=p.id,
@@ -184,7 +185,7 @@ class ProductService:
         """
         logger.debug("[ProductService] List all products")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rows = await self.product_repository.list_products(db)
             return [
                 ProductDTO(
@@ -575,7 +576,7 @@ class ProductService:
             raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
         logger.info(f"[ProductService] Increase quantity ID={product_id} by {amount}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 p = await self.product_repository.increase_quantity(product_id, amount, db)
             if not p:
                 raise HTTPException(status_code=404, detail="Product not found.")
@@ -617,7 +618,7 @@ class ProductService:
             raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
         logger.info(f"[ProductService] Decrease quantity ID={product_id} by {amount}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 p = await self._require(product_id, db)
                 if (p.quantity or 0) < amount:
                     raise HTTPException(status_code=400, detail="Insufficient quantity.")
@@ -662,7 +663,7 @@ class ProductService:
         """
         logger.debug(f"[ProductService] Top products {date_from}..{date_to} limit={limit}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 return await self.product_repository.top_products_by_quantity(
                     session=db, date_from=date_from, date_to=date_to, limit=limit
                 )
@@ -697,7 +698,7 @@ class ProductService:
         """
         logger.debug(f"[ProductService] Sold products in range {date_from}..{date_to} ids={product_ids}")
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 return await self.product_repository.sold_products_in_range(
                     db, date_from=date_from, date_to=date_to, product_ids=product_ids
                 )

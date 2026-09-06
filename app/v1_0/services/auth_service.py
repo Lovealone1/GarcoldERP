@@ -11,6 +11,7 @@ from app.v1_0.repositories import (
     UserRepository,
 )
 from .supabase_admin import SupabaseAdminService
+from app.utils.tx import maybe_begin
 
 
 class AuthService:
@@ -114,11 +115,10 @@ class AuthService:
             return out, rid
 
         try:
-            if db.in_transaction():
+            # maybe_begin already reuses a running transaction; the branch
+            # that used to spell that out here said the same thing twice.
+            async with maybe_begin(db):
                 out, rid = await _upsert()
-            else:
-                async with db.begin():
-                    out, rid = await _upsert()
 
             try:
                 sb = await self.supabase._get_user_raw(sub)
@@ -209,7 +209,7 @@ class AuthService:
         """
         logger.debug("[AuthService] set_role sub=%s role=%s", sub, role_code)
         try:
-            async with db.begin():
+            async with maybe_begin(db):
                 rid = await self.role_repository.get_id_by_code(role_code, db)
                 if not rid:
                     raise HTTPException(status_code=404, detail="role_not_found")
