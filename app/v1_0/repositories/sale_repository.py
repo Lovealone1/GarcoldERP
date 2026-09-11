@@ -262,7 +262,7 @@ class SaleRepository(BaseRepository[Sale]):
         tz: str = "UTC",
     ) -> List[Dict[str, Any]]:
         """
-        Sales with pending balance.
+        All sales with pending balance, including credits from prior periods.
         Returns: [{ customer_id, date: 'YYYY-MM-DD', total, remaining_balance }, ...]
         """
         day_local = cast(func.timezone(tz, Sale.created_at), Date)
@@ -276,7 +276,6 @@ class SaleRepository(BaseRepository[Sale]):
             )
             .where(func.coalesce(Sale.remaining_balance, 0) > 0)
             .order_by(day_local.asc(), Sale.id.asc())
-            .limit(10)
         )
 
         rows = (await session.execute(stmt)).mappings().all()
